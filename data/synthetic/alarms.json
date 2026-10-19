@@ -1,0 +1,125 @@
+{
+  "_note": "SYNTHETIC data (CLAUDE.md §4.1, D-04). Alarm instances (site, inverter id, timestamp, message wording) are invented for the prototype. Fault codes referenced are real, drawn from the Sungrow SG150CX manual (data/raw/SOURCES.md) so retrieval can be checked against real source text. `category` is a labelling convenience matching config/requirements.yaml's fault_categories keys, not part of the alarms DB schema in CLAUDE.md §9.",
+  "alarms": [
+    {
+      "id": 1,
+      "site_id": "site-rj-01",
+      "inverter_id": "inv-04",
+      "brand": "Sungrow",
+      "model": "SG150CX",
+      "code": "370",
+      "category": "boost_capacitor_overvoltage_fault",
+      "message": "Inverter inv-04 raised fault code 370, Boost Capacitor Overvoltage Fault.",
+      "raised_at": "2026-10-12T09:14:00+05:30",
+      "is_synthetic": true
+    },
+    {
+      "id": 2,
+      "site_id": "site-rj-01",
+      "inverter_id": "inv-11",
+      "brand": "Sungrow",
+      "model": "SG150CX",
+      "code": "1610",
+      "category": "pv_grounding_fault",
+      "message": "PV Grounding Fault alarm, code 1610, reported on inv-11.",
+      "raised_at": "2026-10-12T11:02:00+05:30",
+      "is_synthetic": true
+    },
+    {
+      "id": 3,
+      "site_id": "site-gj-02",
+      "inverter_id": "inv-02",
+      "brand": "Sungrow",
+      "model": "SG150CX",
+      "code": "1645",
+      "category": "pv_grounding_fault",
+      "message": "SCADA flagged grounding fault code 1645 on inv-02 overnight.",
+      "raised_at": "2026-10-13T02:40:00+05:30",
+      "is_synthetic": true
+    },
+    {
+      "id": 4,
+      "site_id": "site-tn-03",
+      "inverter_id": "inv-07",
+      "brand": "Sungrow",
+      "model": "SG150CX",
+      "code": "39",
+      "category": "low_system_insulation_resistance",
+      "message": "Fault 39, Low System Insulation Resistance (Earth Fault), on inv-07 after overnight rain.",
+      "raised_at": "2026-10-14T06:20:00+05:30",
+      "is_synthetic": true
+    },
+    {
+      "id": 5,
+      "site_id": "site-tn-03",
+      "inverter_id": "inv-09",
+      "brand": "Sungrow",
+      "model": "SG150CX",
+      "code": "88",
+      "category": "electric_arc_fault",
+      "message": "Electric Arc Fault, code 88, detected on the DC side of inv-09.",
+      "raised_at": "2026-10-14T13:55:00+05:30",
+      "is_synthetic": true
+    },
+    {
+      "id": 6,
+      "site_id": "site-rj-01",
+      "inverter_id": "inv-04",
+      "brand": "Sungrow",
+      "model": "SG150CX",
+      "code": "514",
+      "category": "meter_communication_abnormal",
+      "message": "Meter Communication Abnormal Alarm, code 514, on inv-04.",
+      "raised_at": "2026-10-15T08:10:00+05:30",
+      "is_synthetic": true
+    },
+    {
+      "id": 7,
+      "site_id": "site-gj-02",
+      "inverter_id": "inv-06",
+      "brand": "Sungrow",
+      "model": "SG150CX",
+      "code": "37",
+      "category": "excessive_ambient_temperature",
+      "message": "Code 37, Excessively High Ambient Temperature, on inv-06 at midday.",
+      "raised_at": "2026-10-16T13:00:00+05:30",
+      "is_synthetic": true
+    },
+    {
+      "id": 8,
+      "site_id": "site-rj-01",
+      "inverter_id": "inv-11",
+      "brand": "Sungrow",
+      "model": "SG150CX",
+      "code": "380",
+      "category": "boost_capacitor_overvoltage_fault",
+      "message": "Boost Capacitor Overvoltage Fault, code 380, inv-11 restarted automatically after 15 minutes.",
+      "raised_at": "2026-10-16T15:45:00+05:30",
+      "is_synthetic": true
+    },
+    {
+      "id": 9,
+      "site_id": "site-tn-03",
+      "inverter_id": "inv-02",
+      "brand": "Sungrow",
+      "model": "SG150CX",
+      "code": "1605",
+      "category": "pv_grounding_fault",
+      "message": "Ground fault code 1605 on inv-02, technician on site.",
+      "raised_at": "2026-10-17T07:30:00+05:30",
+      "is_synthetic": true
+    },
+    {
+      "id": 10,
+      "site_id": "site-gj-02",
+      "inverter_id": "inv-06",
+      "brand": "Sungrow",
+      "model": "SG150CX",
+      "code": "37",
+      "category": "excessive_ambient_temperature",
+      "message": "Inverter inv-06 fan alarm, code 37, excessive ambient temperature again today.",
+      "raised_at": "2026-10-17T14:20:00+05:30",
+      "is_synthetic": true
+    }
+  ]
+}

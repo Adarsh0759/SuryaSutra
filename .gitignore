@@ -1,0 +1,33 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Env / secrets
+.env
+
+# Data (D-13: never redistribute vendor manuals; D-26: raw/processed are regenerable)
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/SOURCES.md
+!data/raw/checksums.sha256
+data/processed/*
+!data/processed/.gitkeep
+
+# Experiment outputs (D-26: keep summary, not every run)
+eval/results/*
+!eval/results/summary.md
+!eval/results/.gitkeep
+
+# Frontend
+web/node_modules/
+web/dist/
+
+# Editors / OS
+.vscode/
+.DS_Store
+Thumbs.db

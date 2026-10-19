@@ -1,0 +1,23 @@
+# ₹/token pricing per model (CLAUDE.md §8). Update manually when provider pricing
+# changes — these are not fetched live. D-22: provider-reported token counts are
+# ground truth; this file only turns tokens into ₹ cost.
+#
+# USD prices fetched directly from Groq's own docs (not a third-party aggregator):
+#   https://console.groq.com/docs/model/openai/gpt-oss-120b
+#   https://console.groq.com/docs/model/openai/gpt-oss-20b
+# USD->INR conversion is an approximate mid-market rate, not a transactional one —
+# re-check before using this for any real pricing decision.
+
+last_verified: 2026-10-19
+usd_to_inr: 96.5
+
+providers:
+  groq:
+    openai/gpt-oss-120b:
+      input_usd_per_million: 0.15
+      output_usd_per_million: 0.60
+      context_window: 131072
+    openai/gpt-oss-20b:
+      input_usd_per_million: 0.075
+      output_usd_per_million: 0.30
+      context_window: 131072

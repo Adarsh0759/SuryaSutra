@@ -1,0 +1,112 @@
+# Fault category -> requirement schema (D-07).
+#
+# review_status: unreviewed means NO qualified electrical/PV person has checked this
+# requirement yet. Per CLAUDE.md §6 and D-14, nothing here may be used to support a
+# published safety claim until that review happens. Content below is drawn from the
+# real Sungrow SG150CX manual (data/raw/SOURCES.md), §9 Troubleshooting and Maintenance,
+# pages 96-109 — it is real vendor text, not fabricated, but still unreviewed.
+#
+# Coverage is deliberately partial: 6 of the manual's ~20+ fault codes, chosen to span
+# distinct requirement shapes (pure safety isolation, cause diagnosis, communication
+# check, routine-maintenance-triggered safety). Expanding further is content work, not
+# a code change — see docs/PROGRESS.md.
+
+requirements:
+  safety_dc_isolation_sequence:
+    description: >
+      Disconnect the AC circuit breaker on the grid side before the DC switch; wait
+      until DC current drops below 0.5 A before disconnecting the DC switch or
+      unplugging PV terminals (manual pages 103-105).
+    review_status: unreviewed
+    tag_rules:
+      doc_types: [manual, safety]
+      keywords_any: ["disconnect the DC switch", "0.5 A", "AC circuit breaker"]
+
+  corrective_measures_present:
+    description: >
+      Chunk contains the vendor's stated corrective measures for a fault code
+      (what to check/do, and when to escalate to Sungrow Customer Service).
+    review_status: unreviewed
+    tag_rules:
+      doc_types: [manual]
+      keywords_any: ["Corrective Measures", "Contact Sungrow", "Customer Service"]
+
+  safety_disconnect_dc_before_arc_repair:
+    description: >
+      Disconnect the DC power supply before inspecting or replacing a damaged DC
+      cable, loose terminal, or fuse when clearing an electric arc fault (manual
+      page 100).
+    review_status: unreviewed
+    tag_rules:
+      doc_types: [manual, safety]
+      keywords_any: ["disconnect the DC power supply", "Electric Arc Fault"]
+
+  safety_fan_maintenance_isolation:
+    description: >
+      Power off the inverter and disconnect it from all power sources before fan
+      maintenance; wait 5 minutes and verify no voltage/current with a specialized
+      instrument before touching; qualified personnel wearing protective equipment
+      only (manual page 108, §9.2.5).
+    review_status: unreviewed
+    tag_rules:
+      doc_types: [manual, safety]
+      keywords_any: ["Power off the inverter", "wait 5 minutes", "qualified personnel"]
+
+  cause_low_insulation_resistance:
+    description: >
+      Diagnosis for fault 39, Low System Insulation Resistance (Earth Fault): check
+      the ISO resistance protection value and the resistance to ground of the string
+      and DC cable (manual pages 99-100).
+    review_status: unreviewed
+    tag_rules:
+      doc_types: [manual]
+      keywords_any: ["Low System Insulation Resistance", "ISO resistance", "resistance to ground"]
+
+  cause_electric_arc_fault:
+    description: >
+      Diagnosis for fault 88, Electric Arc Fault: a damaged DC cable, loose
+      connection terminal, or weak contact (manual page 100).
+    review_status: unreviewed
+    tag_rules:
+      doc_types: [manual]
+      keywords_any: ["Electric Arc Fault"]
+
+  check_meter_communication:
+    description: >
+      Diagnosis/check for fault 514, Meter Communication Abnormal Alarm: inspect the
+      communication cable and terminals, reconnect if needed (manual page 101).
+    review_status: unreviewed
+    tag_rules:
+      doc_types: [manual]
+      keywords_any: ["Meter Communication", "communication cable"]
+
+fault_categories:
+  boost_capacitor_overvoltage_fault:
+    match_codes: ["364-395"]
+    must: [safety_dc_isolation_sequence]
+    optional: [corrective_measures_present]
+
+  pv_grounding_fault:
+    match_codes: ["1600-1615", "1632-1655"]
+    must: [safety_dc_isolation_sequence]
+    optional: [corrective_measures_present]
+
+  low_system_insulation_resistance:
+    match_codes: ["39"]
+    must: [cause_low_insulation_resistance, corrective_measures_present]
+    optional: []
+
+  electric_arc_fault:
+    match_codes: ["88"]
+    must: [cause_electric_arc_fault, safety_disconnect_dc_before_arc_repair]
+    optional: [corrective_measures_present]
+
+  meter_communication_abnormal:
+    match_codes: ["514"]
+    must: [check_meter_communication]
+    optional: [corrective_measures_present]
+
+  excessive_ambient_temperature:
+    match_codes: ["37"]
+    must: [corrective_measures_present]
+    optional: [safety_fan_maintenance_isolation]

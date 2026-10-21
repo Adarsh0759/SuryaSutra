@@ -77,12 +77,12 @@ def test_health_returns_ok(client: TestClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_list_alarms_returns_ten_synthetic_alarms(client: TestClient) -> None:
+def test_list_alarms_returns_synthetic_alarms(client: TestClient) -> None:
     response = client.get("/alarms")
 
     assert response.status_code == 200
     alarms = response.json()
-    assert len(alarms) == 10
+    assert len(alarms) == 12  # 10 answerable + 2 deliberately-unanswerable (D-14)
     assert all(a["is_synthetic"] for a in alarms)
 
 

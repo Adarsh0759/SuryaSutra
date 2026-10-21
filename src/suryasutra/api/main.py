@@ -63,7 +63,9 @@ def triage(req: TriageRequest, request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"unknown fault category: {alarm['category']}")
 
     results = state.retriever.query(alarm["message"], top_k=40)
-    candidates = [Candidate(chunk=r.chunk, relevance=r.score) for r in results]
+    candidates = [
+        Candidate(chunk=r.chunk, relevance=r.score, embedding=r.embedding) for r in results
+    ]
     selection = selector.select(
         candidates, must=category.must, optional=category.optional, budget=req.budget
     )

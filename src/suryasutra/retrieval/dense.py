@@ -25,7 +25,11 @@ EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 # needs the network once the model is on disk. A fresh machine's first load still goes
 # online normally, since this only applies once the cache directory already exists.
 _MODEL_CACHE = (
-    Path.home() / ".cache" / "huggingface" / "hub" / f"models--{EMBEDDING_MODEL_NAME.replace('/', '--')}"
+    Path.home()
+    / ".cache"
+    / "huggingface"
+    / "hub"
+    / f"models--{EMBEDDING_MODEL_NAME.replace('/', '--')}"
 )
 if _MODEL_CACHE.exists():
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
@@ -42,15 +46,25 @@ class DenseIndex:
         self._chunks = chunks
         self._model = model or SentenceTransformer(EMBEDDING_MODEL_NAME)
         self._index: faiss.IndexFlatIP | None = None
+        self._embedding_by_chunk: dict[Chunk, tuple[float, ...]] = {}
 
         if chunks:
             embeddings = self._embed([c.text for c in chunks])
             self._index = faiss.IndexFlatIP(embeddings.shape[1])
             self._index.add(embeddings)
+            self._embedding_by_chunk = {
+                chunk: tuple(float(x) for x in vec) for chunk, vec in zip(chunks, embeddings)
+            }
 
     def _embed(self, texts: list[str]) -> np.ndarray:
         # normalize_embeddings=True turns inner product into cosine similarity.
         return np.asarray(self._model.encode(texts, normalize_embeddings=True), dtype=np.float32)
+
+    def embedding_for(self, chunk: Chunk) -> tuple[float, ...] | None:
+        """Every chunk in this index's corpus was embedded at construction time, so
+        this works for any chunk from that corpus — not just ones this particular
+        dense query would itself have ranked highly (e.g. a BM25-only match)."""
+        return self._embedding_by_chunk.get(chunk)
 
     def query(self, text: str, top_k: int = 10) -> list[ScoredChunk]:
         if self._index is None:

@@ -80,6 +80,19 @@ requirements:
       doc_types: [manual]
       keywords_any: ["Meter Communication", "communication cable"]
 
+  safety_battery_thermal_isolation:
+    description: >
+      TEST/SYNTHETIC requirement for the eval set's deliberately-unanswerable cases
+      (D-14: ~20% of the eval set should be genuinely unanswerable). Deliberately
+      unsatisfiable against the Sungrow SG150CX manual, which is a pure PV string
+      inverter manual with no dedicated lithium-battery thermal-runaway procedure —
+      verified absent by direct text search, not assumed. Not a real safety claim;
+      exists only to exercise the no_evidence/INSUFFICIENT path honestly.
+    review_status: unreviewed
+    tag_rules:
+      doc_types: [manual, safety]
+      keywords_any: ["thermal runaway containment protocol", "lithium cell venting isolation"]
+
 fault_categories:
   boost_capacitor_overvoltage_fault:
     match_codes: ["364-395"]
@@ -110,3 +123,11 @@ fault_categories:
     match_codes: ["37"]
     must: [corrective_measures_present]
     optional: [safety_fan_maintenance_isolation]
+
+  battery_thermal_event_test:
+    # Synthetic/test category (code 9001 does not exist in the real manual's fault
+    # table) — exists only so the eval set has genuinely unanswerable cases. See
+    # safety_battery_thermal_isolation's description above.
+    match_codes: ["9001"]
+    must: [safety_battery_thermal_isolation]
+    optional: []

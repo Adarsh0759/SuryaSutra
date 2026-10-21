@@ -69,3 +69,21 @@ def test_hybrid_retriever_respects_top_k(model: SentenceTransformer) -> None:
     results = retriever.query("fault code corrective", top_k=2)
 
     assert len(results) == 2
+
+
+def test_hybrid_retriever_attaches_embeddings_to_results(model: SentenceTransformer) -> None:
+    """Regression: HybridRetriever used to return embedding=None for every result,
+    silently disabling MMR's diversity penalty and the selector's near-duplicate
+    dedup in the actual running system (found during the M5 eval run, not by a
+    test — existing tests all used hand-built Candidates with explicit embeddings,
+    which masked that real retrieval never supplied one)."""
+    chunks = [
+        _chunk("Isolate DC side before opening.", page=1),
+        _chunk("Check insulation resistance to ground.", page=2),
+    ]
+    retriever = HybridRetriever(BM25Index(chunks), DenseIndex(chunks, model=model))
+
+    results = retriever.query("isolate DC side", top_k=2)
+
+    assert all(r.embedding is not None for r in results)
+    assert all(len(r.embedding) > 0 for r in results)  # type: ignore[arg-type]

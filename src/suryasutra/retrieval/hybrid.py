@@ -17,6 +17,7 @@ from suryasutra.retrieval.dense import DenseIndex
 class ScoredChunk:
     chunk: Chunk
     score: float
+    embedding: tuple[float, ...] | None = None
 
 
 def reciprocal_rank_fusion(rankings: list[list[Chunk]], k: int = 60) -> list[ScoredChunk]:
@@ -37,5 +38,15 @@ class HybridRetriever:
     def query(self, text: str, top_k: int = 10, candidate_k: int = 40) -> list[ScoredChunk]:
         bm25_chunks = [r.chunk for r in self._bm25.query(text, top_k=candidate_k)]
         dense_chunks = [r.chunk for r in self._dense.query(text, top_k=candidate_k)]
-        fused = reciprocal_rank_fusion([bm25_chunks, dense_chunks])
-        return fused[:top_k]
+        fused = reciprocal_rank_fusion([bm25_chunks, dense_chunks])[:top_k]
+        # Every chunk in the corpus has a dense embedding regardless of which
+        # ranking(s) it came from — attach it so selectors that need it (MMR's
+        # diversity penalty, RequirementCompleteSelector's near-duplicate dedup)
+        # actually have one (D-20 gap found during the M5 eval run: this was
+        # previously always None, silently disabling both).
+        return [
+            ScoredChunk(
+                chunk=sc.chunk, score=sc.score, embedding=self._dense.embedding_for(sc.chunk)
+            )
+            for sc in fused
+        ]

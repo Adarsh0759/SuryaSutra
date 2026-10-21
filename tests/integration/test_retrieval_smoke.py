@@ -1,11 +1,14 @@
 """M1 done-criterion (CLAUDE.md §15): retrieval returns sensible top-10 for 10 sample
-alarms. Checks, per synthetic alarm, that hybrid retrieval's top-10 includes at least
-one chunk covering one of that alarm's fault category's *mandatory* requirements.
+alarms. Checks, per synthetic *answerable* alarm, that hybrid retrieval's top-10
+includes at least one chunk covering one of that alarm's fault category's *mandatory*
+requirements. The 2 deliberately-unanswerable alarms (D-14) are checked the other way:
+retrieval should *not* find a covering chunk for them either — confirming they're
+genuinely hard cases, not mislabelled ones.
 
 This is a retrieval sanity check, not an eval claim (D-11) — the selector (M2) and its
-own invariant tests are what actually enforce mandatory coverage end to end. The 100%
-threshold below is the measured result on this run, not an assumed target; if it drops,
-that's a real regression to investigate, not a flaky test to loosen.
+own invariant tests are what actually enforce mandatory coverage end to end. The
+thresholds below are the measured results on this run, not assumed targets; if either
+drops, that's a real regression to investigate, not a flaky test to loosen.
 """
 
 import json
@@ -51,17 +54,36 @@ def alarms() -> list[dict]:
     return data["alarms"]
 
 
-def test_top_10_retrieval_surfaces_a_mandatory_requirement_chunk_for_each_synthetic_alarm(
+def test_top_10_retrieval_surfaces_a_mandatory_requirement_chunk_for_each_answerable_alarm(
     retriever: HybridRetriever,
     fault_categories: dict[str, FaultCategory],
     alarms: list[dict],
 ) -> None:
     misses = []
     for alarm in alarms:
+        if not alarm["answerable"]:
+            continue
         category = fault_categories[alarm["category"]]
         results = retriever.query(alarm["message"], top_k=10)
         if not any(result.chunk.covers & category.must for result in results):
             misses.append(alarm["id"])
 
-    # Measured 10/10 on this corpus + alarm set as of this writing (D-11: not assumed).
-    assert not misses, f"alarms with no mandatory-requirement chunk in top 10: {misses}"
+    # Measured 10/10 answerable alarms on this corpus as of this writing (D-11: not assumed).
+    assert not misses, f"answerable alarms with no mandatory-requirement chunk in top 10: {misses}"
+
+
+def test_top_10_retrieval_finds_no_mandatory_requirement_chunk_for_unanswerable_alarms(
+    retriever: HybridRetriever,
+    fault_categories: dict[str, FaultCategory],
+    alarms: list[dict],
+) -> None:
+    false_hits = []
+    for alarm in alarms:
+        if alarm["answerable"]:
+            continue
+        category = fault_categories[alarm["category"]]
+        results = retriever.query(alarm["message"], top_k=10)
+        if any(result.chunk.covers & category.must for result in results):
+            false_hits.append(alarm["id"])
+
+    assert not false_hits, f"unanswerable alarms unexpectedly matched a chunk: {false_hits}"

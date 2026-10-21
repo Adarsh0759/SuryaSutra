@@ -127,3 +127,49 @@ def test_triage_returns_answered_with_citations(client: TestClient) -> None:
     assert body["usage"]["input_tokens"] == 50
     assert "c1" in body["sources"]
     assert "page_start" in body["sources"]["c1"]
+
+
+def test_triage_persists_a_run_retrievable_via_get_runs(client: TestClient) -> None:
+    state: AppState = client.app.state.suryasutra
+    original_llm = state.llm
+    state.llm = FakeLLMAdapter([_VALID_RESPONSE])
+    _fake_pricing_entry(state)
+    try:
+        triage_response = client.post(
+            "/triage", json={"alarm_id": 1, "method": "requirement_complete", "budget": 1000}
+        )
+    finally:
+        state.llm = original_llm
+
+    assert triage_response.status_code == 200
+
+    # Not knowing the exact run id (other tests also write rows against the same
+    # test DB), query the DB directly for the one this call just created.
+    from suryasutra.db.models import TriageRun
+    from suryasutra.db.session import get_session
+
+    with get_session() as session:
+        run = (
+            session.query(TriageRun)
+            .filter_by(alarm_id=1, method="requirement_complete", budget=1000)
+            .order_by(TriageRun.id.desc())
+            .first()
+        )
+        assert run is not None
+        run_id = run.id
+
+    run_response = client.get(f"/runs/{run_id}")
+
+    assert run_response.status_code == 200
+    body = run_response.json()
+    assert body["status"] == "ANSWERED"
+    assert body["method"] == "requirement_complete"
+    assert "c1" in body["selected_chunk_ids"]  # real selector may pick more than one
+    assert body["usage"]["input_tokens"] == 50
+    assert body["answer"]["safety"][0]["citations"] == ["c1"]
+
+
+def test_get_run_unknown_id_returns_404(client: TestClient) -> None:
+    response = client.get("/runs/999999")
+
+    assert response.status_code == 404

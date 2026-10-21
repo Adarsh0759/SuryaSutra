@@ -1,8 +1,11 @@
-"""Builds the in-memory corpus, retriever, selectors and pricing once per process.
+"""Builds the in-memory corpus, retriever, selectors and pricing once per process —
+plus, since M5, runs DB migrations and seeds the alarms table (D-18).
 
-No DB yet for this slice (M4's first increment) — alarms come straight from
-data/synthetic/alarms.json. Persisting runs/usage is a focused follow-up, not needed
-for a first end-to-end alarm -> triage round trip to work.
+`self.alarms` stays an in-memory dict too, built from the same JSON: the hot path
+(/triage's category/message lookup) doesn't need a DB round trip for static seed data
+that nothing mutates at runtime. The DB is the source GET /alarms actually reads from,
+so persistence isn't a write-only black hole — and it's what triage_runs/usage get
+written to.
 """
 
 import json
@@ -11,6 +14,9 @@ from typing import Any
 
 from config.settings import settings
 
+from suryasutra.db.migrate import run_migrations
+from suryasutra.db.seed import seed_alarms_from_json
+from suryasutra.db.session import get_session
 from suryasutra.generation.llm.base import LLMAdapter
 from suryasutra.generation.llm.groq_adapter import GroqAdapter
 from suryasutra.ingest.build_index import build_corpus
@@ -57,6 +63,10 @@ class AppState:
     llm: LLMAdapter | None
 
     def __init__(self) -> None:
+        run_migrations()
+        with get_session() as session:
+            seed_alarms_from_json(session, ALARMS_PATH)
+
         self.requirements = load_requirements(REQUIREMENTS_PATH)
         self.fault_categories = load_fault_categories(REQUIREMENTS_PATH)
         chunks = build_corpus(MANUAL_PATH, doc_type="manual", requirements=self.requirements)

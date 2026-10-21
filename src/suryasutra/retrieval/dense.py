@@ -6,7 +6,9 @@ FAISS flat index for the prototype; swapped for Qdrant at pilot scale behind the
 shape of interface (D-19) — this module stays a plain in-memory index for now.
 """
 
+import os
 from dataclasses import dataclass
+from pathlib import Path
 
 import faiss
 import numpy as np
@@ -15,6 +17,18 @@ from sentence_transformers import SentenceTransformer
 from suryasutra.ingest.chunk import Chunk
 
 EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
+
+# Once the model is cached locally, skip the Hugging Face Hub connectivity/update
+# check on load — seen repeatedly as an intermittent httpx.RemoteProtocolError that
+# otherwise fails DenseIndex construction (and anything that depends on it, including
+# plain `uvicorn` startup) on a transient network hiccup, even though nothing actually
+# needs the network once the model is on disk. A fresh machine's first load still goes
+# online normally, since this only applies once the cache directory already exists.
+_MODEL_CACHE = (
+    Path.home() / ".cache" / "huggingface" / "hub" / f"models--{EMBEDDING_MODEL_NAME.replace('/', '--')}"
+)
+if _MODEL_CACHE.exists():
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
 
 @dataclass(frozen=True)

@@ -244,9 +244,11 @@ Rule: research code (`selection/`, `eval/`) must not import from `api/` or `web/
   "steps": [{"n": 1, "action": "...", "expected_result": "...", "citations": ["chunk_id"]}],
   "escalate_if": ["..."],
   "uncertainties": ["..."],
+  "sources": {"chunk_id": {"page_start": 0, "page_end": 0, "text": "..."}},
   "usage": {"input_tokens": 0, "output_tokens": 0, "cost_inr": 0.0, "budget": 1000, "method": "..."}
 }
 ```
+`sources` is not in this spec's earlier drafts — added because without it, the citation chips in §11's triage view have nothing to resolve to (citation ids are opaque per-request strings, not stable chunk DB ids). Purely additive.
 `INSUFFICIENT` responses return `{"status":"INSUFFICIENT","reason":"no_evidence|over_budget","missing_requirements":[...],"suggested_next":"..."}`.
 The validator rejects answers where any step or safety item lacks a citation to a selected chunk; on rejection, retry once, then return INSUFFICIENT.
 

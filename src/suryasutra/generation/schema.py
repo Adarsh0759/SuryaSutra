@@ -46,6 +46,18 @@ class Usage(BaseModel):
     method: str
 
 
+class Source(BaseModel):
+    """What a citation id actually points to. Not in CLAUDE.md §10's original JSON
+    contract — added because without it, "click a citation -> see the source page"
+    (§11's triage view spec) is impossible: citation ids are opaque per-request
+    strings (c1, c2, ...; see prompts/triage_prompt.py) with nothing else to resolve
+    them. Purely additive, included on every ANSWERED response."""
+
+    page_start: int
+    page_end: int
+    text: str
+
+
 class AnsweredContract(BaseModel):
     status: Literal["ANSWERED"] = "ANSWERED"
     alarm: dict[str, str]
@@ -54,6 +66,7 @@ class AnsweredContract(BaseModel):
     steps: list[Step]
     escalate_if: list[str]
     uncertainties: list[str]
+    sources: dict[str, Source]
     usage: Usage
 
 

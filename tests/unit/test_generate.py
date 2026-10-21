@@ -92,6 +92,9 @@ def test_generate_triage_answer_succeeds_on_valid_first_response() -> None:
     assert result.usage.output_tokens == 50
     assert result.usage.budget == 500
     assert llm.call_count == 1
+    assert "c1" in result.sources
+    assert result.sources["c1"].page_start == 103
+    assert result.sources["c1"].text == "Disconnect AC and DC switches."
 
 
 def test_generate_triage_answer_retries_once_then_succeeds() -> None:

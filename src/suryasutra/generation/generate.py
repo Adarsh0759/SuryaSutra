@@ -11,6 +11,7 @@ from suryasutra.generation.schema import (
     AnsweredContract,
     InsufficientContract,
     LLMAnswerPayload,
+    Source,
     Usage,
 )
 from suryasutra.generation.validate import CitationError, validate_citations
@@ -52,6 +53,10 @@ def generate_triage_answer(
             budget=budget,
             method=method,
         )
+        sources = {
+            cid: Source(page_start=chunk.page_start, page_end=chunk.page_end, text=chunk.text)
+            for cid, chunk in citation_map.items()
+        }
         return AnsweredContract(
             alarm={"code": alarm.code, "summary": alarm.message},
             safety=payload.safety,
@@ -59,6 +64,7 @@ def generate_triage_answer(
             steps=payload.steps,
             escalate_if=payload.escalate_if,
             uncertainties=payload.uncertainties,
+            sources=sources,
             usage=usage,
         )
 

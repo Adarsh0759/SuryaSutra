@@ -125,3 +125,5 @@ def test_triage_returns_answered_with_citations(client: TestClient) -> None:
     assert body["status"] == "ANSWERED"
     assert body["safety"][0]["citations"] == ["c1"]
     assert body["usage"]["input_tokens"] == 50
+    assert "c1" in body["sources"]
+    assert "page_start" in body["sources"]["c1"]

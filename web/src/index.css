@@ -1,12 +1,28 @@
 @import 'tailwindcss';
 
+/* Dark mode is toggled manually via a `.dark` class on <html> (useTheme.ts), not
+   detected from the OS — so `dark:` utilities below apply only when that class is
+   present, regardless of the visitor's system theme. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
   font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  background-color: #fffbeb; /* amber-50 */
+  color: #1e293b; /* slate-800 */
+}
+
+:root.dark body {
+  background-color: #0f172a; /* slate-900 */
+  color: #e2e8f0; /* slate-200 */
 }
 
 #root {

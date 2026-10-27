@@ -12,7 +12,7 @@ export function CitationChips({ ids, onOpen }: CitationChipsProps) {
           key={id}
           type="button"
           onClick={() => onOpen(id)}
-          className="rounded bg-gray-200 px-1.5 py-0.5 font-mono text-xs text-gray-700 hover:bg-gray-300"
+          className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-xs text-amber-800 hover:bg-amber-200 dark:bg-amber-900/50 dark:text-amber-300 dark:hover:bg-amber-900/70"
         >
           {id}
         </button>

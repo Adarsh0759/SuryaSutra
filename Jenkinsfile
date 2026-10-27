@@ -8,7 +8,12 @@ pipeline {
     agent any
 
     environment {
-        APP_HOST = '100.61.126.234'
+        // Private IP, not public: both instances are in the same VPC, but AWS
+        // security-group-to-security-group rules only apply to intra-VPC traffic —
+        // traffic to the public IP round-trips through the Internet Gateway and no
+        // longer carries "which security group did this come from" information, so
+        // the app SG's Jenkins-SG-sourced SSH rule silently never matches there.
+        APP_HOST = '172.31.15.233'
         APP_USER = 'ec2-user'
         APP_DIR  = '/opt/suryasutra/repo'
         REPO_URL = 'https://github.com/Adarsh0759/SuryaSutra.git'

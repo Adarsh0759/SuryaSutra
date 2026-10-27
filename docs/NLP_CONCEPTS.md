@@ -44,6 +44,7 @@ PDF manual  →  chunks  →  tagged chunks  →  [alarm fires]  →  hybrid ret
 ```
 
 Two things happen at different times:
+
 - **Ingestion** (§3) happens once, when the app starts: the manual gets parsed,
   chunked, and tagged.
 - **Triage** (§4–6) happens once per alarm, when you click a row in the UI.

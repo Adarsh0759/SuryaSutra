@@ -133,6 +133,7 @@ denied* unless a rule explicitly allows it — "deny by default" is the safe sta
 point.
 
 **What SuryaSutra actually has**:
+
 - `suryasutra-app-sg`: allows port 22 (SSH) only from the founder's own IP, port 80
   (the app itself) from anywhere (`0.0.0.0/0` — that's the point, it's the public demo),
   and — added later — port 22 from `suryasutra-jenkins-sg` specifically (see below).

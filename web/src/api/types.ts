@@ -13,6 +13,7 @@ export interface Alarm {
   message: string
   raised_at: string
   is_synthetic: boolean
+  answerable: boolean | null
 }
 
 export interface CitedItem {
@@ -77,3 +78,18 @@ export const SELECTOR_METHODS = [
 ] as const
 
 export type SelectorMethod = (typeof SELECTOR_METHODS)[number]
+
+// GET /stats/usage — one row per method/budget group (CLAUDE.md §11 screen 4).
+// Means are null when a group has no ANSWERED runs with usage yet (nothing to
+// average), not zero — a dashboard with no runs should say so, not show fake 0s.
+export interface UsageStatsRow {
+  method?: string
+  budget?: number
+  run_count: number
+  answered_count: number
+  insufficient_count: number
+  full_mandatory_coverage_rate: number | null
+  mean_cost_inr: number | null
+  mean_input_tokens: number | null
+  mean_output_tokens: number | null
+}

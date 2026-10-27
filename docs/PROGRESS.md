@@ -199,11 +199,136 @@ Not a CLAUDE.md milestone of its own, but the fork from M5's "next step" that go
 - **Verified against the real, running, browser-driven app, not just pytest**: ran the actual Playwright e2e suite against the full stack (real `uvicorn`, real migrations, real DB) — both tests passed, and directly queried the real dev DB afterward to confirm 3 real `triage_runs` rows (with `usage` rows) were genuinely written by the browser session, not just asserted by a test.
 - Full suite: **103/103 passed**, lint/format/mypy clean across 40 source files.
 
-### Known issues / open items
-- No `GET /stats/usage` (cost dashboard data) or `POST /feedback` yet — `GET /runs/{id}` is the only new read endpoint; the dashboard screen itself (§11 screen 4) isn't built.
+### Known issues / open items (carried forward)
+- No `POST /feedback` yet.
 - `documents`/`chunks`/`requirements` tables don't exist — the corpus is still rebuilt from the PDF + YAML at every process startup, not persisted or queryable by id. Revisit when multi-document/multi-tenant support actually matters (pilot stage, D-19).
 - Migrations run implicitly at every app startup rather than as an explicit deploy step — fine for prototype/SQLite, noted as a thing to change before a real Postgres deploy.
-- The transient HF Hub network flake hit the Playwright `webServer` startup once during this work too (same known pattern, retried clean) — now observed across pytest, plain `uvicorn`, and Playwright; still not chased further since it's never been a real code bug, always clears on retry.
+- The transient HF Hub network flake hit the Playwright `webServer` startup during this work too (same known pattern, retried clean) — observed across pytest, plain `uvicorn`, and Playwright; still not chased further since it's never been a real code bug, always clears on retry.
+
+## Dashboard (`GET /stats/usage` + frontend screen): done
+
+CLAUDE.md §11 screen 4: "cost per alarm by method/budget, mandatory-coverage rate, abstention counts, from real logged runs only."
+
+### What works
+- **Fixed a real gap before building the dashboard, not after**: `TriageRun.missing_requirements` was previously only ever populated for `INSUFFICIENT` results — an `ANSWERED` result from a baseline selector that silently dropped a mandatory requirement (H1's exact failure mode) wasn't flagged anywhere in the DB, which would have made "mandatory-coverage rate" on the dashboard quietly wrong for exactly the cases that matter most. `POST /triage` now computes the mandatory-coverage gap from the selection phase itself, independent of which contract type ends up being returned, and persists it either way. New regression test (`test_persisted_run_flags_mandatory_coverage_gap_even_when_status_is_answered`) uses a real alarm/method/budget combination already known (from the M5 eval run) to trigger this, not a contrived fixture.
+- `GET /stats/usage?group_by=method,budget` — groups real `triage_runs`/`usage` rows by any combination of `method`/`budget` (CLAUDE.md §10's example), returns run/answered/insufficient counts, full-mandatory-coverage rate, and mean cost/tokens. Means are `null` (not `0`) when a group has no usage data yet — an honest "nothing to average" rather than a fabricated number (D-11). Invalid `group_by` fields 400.
+- `web/src/pages/Dashboard.tsx` — table + a Recharts bar chart (first real use of Recharts in the project) of mean cost by method/budget. Explicit empty state ("No triage runs recorded yet...") when there's no data — never a chart with fake numbers.
+- `App.tsx` restructured with a simple tab switcher (Alarm queue / Dashboard) — still no router dependency, consistent with the earlier call to avoid one for 3-4 screens with no deep-linking need.
+- **A real bug caught and traced to root cause, not shrugged off**: first dashboard screenshot showed the bar chart's axes/legend/table all correct but the bars themselves invisible. Didn't assume it was fine — queried the live DOM via Playwright, found the actual bar `<path>` elements had entirely correct geometry and fill, then found my own debugging selector (`.recharts-wrapper svg`) had matched the Legend's tiny icon SVG, not the main chart. Root cause: Recharts' default mount animation — the first screenshot was taken immediately after switching tabs, before the bars finished animating in. Confirmed by retaking the screenshot after a wait; bars render correctly. Not an app bug — a timing artifact in my own verification script.
+- 3 new backend tests (`test_stats_usage_invalid_group_by_returns_400`, `test_stats_usage_groups_real_run_by_method_and_budget` using a distinctive budget value to isolate its assertions from other tests sharing the same test DB, plus the coverage-gap regression test above) + 1 new real e2e test (`dashboard.spec.ts`, real backend/LLM/DB, confirms the dashboard reads back a run it just caused).
+- Full suite: **106/106 passed**, lint/format/mypy clean on the backend; frontend `oxlint` + `tsc` build clean; **3/3 real e2e tests passing**.
+
+### Known issues / open items
+- Chart only shows mean cost; CLAUDE.md §11 also implies abstention counts and coverage rate could be charted, not just tabled — table covers this for now, chart could be extended later if useful.
+- Still no `POST /feedback`.
+
+## Eval gold-labelling tooling (D-14): built; founder-reviewed; qualified-person sign-off still open
+
+### What works
+- **Caught a process gap and fixed it first**: `docs/DECISIONS.md` hadn't been touched since the very first commit, even though several real decisions were made since (D-33–D-36 now added: Groq/model choice, the `sources` field addition, DB layer scoping, the retrieval embedding fix) — CLAUDE.md §0.8 requires logging these after each milestone and it had slipped. Fixed before starting this work, not after.
+- `eval/gold_labels.py` — `GoldLabel`/`GoldLabelSet` (Pydantic), `load_gold_labels()`, `write_template()`. `write_template()` still never pre-fills gold fields — enforced by a test, not just a docstring promise. `GoldLabelSet` carries `drafted_by`, machine-checkable provenance (who/what actually wrote the field values), not just a prose comment.
+- `eval/suggest_gold_labels.py` — a **clearly separate, non-authoritative** helper: runs real retrieval per answerable alarm and lists which pages the *automated* tagging system currently believes are mandatory-relevant, writing to a **different file** (`data/eval/system_suggestions.yaml`, gitignored, regenerable) so there's no way to mistake "what the system already believes" for "what a human independently verified."
+- **2026-10-24: the founder asked the system to draft the actual gold values**, after being told plainly what that costs (D-14 exists so the eval isn't self-graded). Drafted every field for real (fresh, direct re-read of the manual's pages 96-110 — not memory, not copied from `config/requirements.yaml`), `review_status: unreviewed`, `drafted_by` stating plainly it was AI-drafted and not independently human-verified. Logged as **D-37**.
+- **2026-10-25: the founder reviewed the draft against the manual and confirmed it correct.** `data/eval/gold_labels.yaml` updated: `review_status` → `founder_reviewed` (deliberately not a bare `reviewed`, which would overclaim D-14's full bar); `drafted_by` now records both the original AI draft and the founder's confirmation, and still names the qualified-electrical/PV-person sign-off as the remaining step before publication. D-37 updated with this outcome rather than left stale. Per-alarm `notes` fields had their "AI draft." labels removed (now redundant with the file-level `drafted_by`) but kept their substantive content — including the judgment-call flags (e.g. alarm 1: whether the general p.105 maintenance block counts as mandatory for that specific fault, or whether the fault-specific p.103 procedure is sufficient alone).
+- `data/eval/gold_labels.yaml` — all 12 alarms: 10 answerable ones have real `gold_causes`/`gold_mandatory_pages`/`gold_step_checklist` drawn from the actual corrective-measures text per fault code (e.g. alarm 2's PV Grounding Fault checklist includes the manual's explicit "do NOT disconnect while current > 0.5 A" prohibition, not a paraphrase); the 2 deliberately-unanswerable alarms correctly have nothing.
+- 8 tests: `test_real_gold_labels_file_reflects_founder_review_not_full_publication_bar` (replaces the earlier AI-drafted-only check; asserts `review_status` is neither `unreviewed` nor a bare `reviewed`, and that `drafted_by` still names the founder *and* the still-pending qualified-person bar) + `test_real_gold_labels_file_has_content_for_every_answerable_alarm`.
+- Full suite: **118/118 passed**, lint/format/mypy clean.
+
+### Known issues / open items
+- **Qualified electrical/PV person sign-off per D-14's original bar has not happened.** `founder_reviewed` is real progress, not the finish line — CLAUDE.md §6/§14 and D-14 both require this before any safety claim is published or appears in investor material. No plan yet for who that reviewer would be; flagging as an open question, not something to silently drop.
+- `gold_step_checklist` is a content checklist (required elements), not literal gold step text — scoring logic that consumes this (not built yet) will need to check for presence/semantic match, not string equality.
+- 10 answerable alarms is still short of D-14's 30-40 target.
+
+Next concrete step once wanted: build the generation-level eval metrics (cause accuracy, step correctness, citation precision) that consume this file — not started yet. These can reasonably be built and tested now that the data has founder sign-off, but any results from them should still be reported as provisional (founder-reviewed, not expert-reviewed) until the qualified-person step above happens.
+
+## `POST /feedback`: done
+
+CLAUDE.md §9/§10's last undone API table entry — technician outcome on a triage run.
+
+### What works
+- `src/suryasutra/db/models.py` — `Feedback` table (own surrogate `id`, FK to `triage_runs`) — a run can legitimately receive more than one feedback entry over time (technician now, supervisor later), so it's not keyed uniquely by `run_id`. New Alembic migration, chained correctly off the previous one and verified by actually running the full two-migration chain against a fresh throwaway DB (not just "the command exited 0").
+- `src/suryasutra/api/schemas.py` — `FeedbackRequest`, `outcome` constrained to CLAUDE.md §9's literal four values (`fixed`/`not_fixed`/`wrong_step`/`unsafe`) — an invalid value 422s from Pydantic validation itself, not hand-written error handling.
+- `POST /feedback` — 404s on an unknown `run_id`, otherwise persists and returns the stored entry.
+- **Caught and fixed my own documentation going stale within the same session**: D-35 (logged literally minutes earlier) said "`feedback` stays file-based" — adding this table made that claim wrong immediately. Corrected it in place rather than letting it drift, since this is exactly the kind of gap that prompted fixing `DECISIONS.md` at the start of this session.
+- No frontend UI for this — correctly out of scope: CLAUDE.md §4.2 lists the feedback *loop* (technician marking outcomes in the UI) under **pilot** scope, not prototype. Building the backend endpoint now (it's in the prototype API table, §10) without the UI is the right scope boundary, not a shortcut.
+- 4 new tests: unknown run 404s, invalid outcome 422s, a real persisted entry round-trips correctly (checked both via the HTTP response and a direct DB query), and multiple feedback entries on the same run are allowed, not overwritten.
+- Full suite: **116/116 passed**, lint/format/mypy clean.
+
+### Known issues / open items
+- `user_role` is free text, not an enum — CLAUDE.md §9 doesn't constrain it either, so this matches spec; could tighten later if real usage shows a fixed set of roles.
+- No `GET` endpoint to list feedback for a run — not in CLAUDE.md §10's table, so not built; `GET /runs/{id}` could be extended to include it later if useful.
+
+### Next smallest step (superseded — see below)
+Waiting on the founder's eval gold-labelling task (see above) — that's the critical path to M5's generation-level metrics. No other self-contained backend work queued; CLAUDE.md §10's API table is now fully built (`/health`, `/alarms`, `/triage`, `/runs/{id}`, `/stats/usage`, `/feedback`). `GET /documents/{id}/page/{n}` is the one remaining table entry, but it needs `documents`/`chunks` to exist as DB rows first (D-35 deferred that) — not worth building against the in-memory corpus alone.
+
+## Generation-level eval metrics + first real generation eval run: done
+
+CLAUDE.md §12's generation-level metrics (cause accuracy, step correctness, citation precision), built and run for real now that `data/eval/gold_labels.yaml` has founder sign-off (D-37).
+
+### What works
+- `eval/generation_metrics.py` — `gold_page_recall()` (fully mechanical set overlap), `cause_match()` and `step_checklist_coverage()` (keyword-overlap heuristics, explicitly documented as approximate, not semantic judgment — D-38). "Citation precision" deliberately left unimplemented rather than faked with keyword matching — it needs a human read-through or a separately-disclosed LLM-judge pass.
+- 12 tests in `tests/unit/test_generation_metrics.py`, including one (`test_step_checklist_coverage_misses_word_form_variants`) that exists specifically to keep the heuristic's real limitation (no stemming — "restart" vs "restarting" don't match) visible rather than hidden by only testing identical wording.
+- `eval/run_generation_eval.py` — runs the real pipeline (retrieval → selection → an actual Groq call) against all 12 founder-reviewed gold alarms, scores each answer, writes `eval/results/<timestamp>_generation_<method>_<budget>.json` (config incl. gold label review_status/drafted_by, git commit hash, per-alarm scores) + a combined `eval/results/summary_generation.md`. CLI-configurable `--methods`/`--budgets`; defaults to `requirement_complete` only (not the full 5-method matrix) to keep a first real run's API cost/time small.
+- **First real run executed** (not just built): `requirement_complete` @ 500/1000/2000 tokens, 36 live Groq calls (`openai/gpt-oss-120b`), against the 10 answerable + 2 unanswerable gold alarms. Results (directional only — see caveats below):
+
+  | Budget | Answered/Answerable | Page recall | Cause match | Step coverage | Correct abstention |
+  |---|---|---|---|---|---|
+  | 500 | 10/10 | 35% | 40% | 37% | 2/2 |
+  | 1000 | 10/10 | 35% | 40% | 45% | 2/2 |
+  | 2000 | 10/10 | 35% | 20% | 52% | 2/2 |
+
+  Full detail in `eval/results/summary_generation.md` and the three JSON files. Reported honestly including the counter-intuitive bit: cause-match rate *dropped* at the highest budget while step coverage rose — plausible read is more budget means more optional content in context, which can dilute which cause the model foregrounds, but N=10 is far too small to draw a real conclusion from this; flagged as a question for a larger eval set, not explained away.
+- **Hit and fixed a real rate-limit gap, not just retried blindly**: the first full run failed partway through (Groq free-tier TPM cap, 8000 tokens/min) — once as a bare read timeout, once as an explicit `groq.RateLimitError`. Added real backoff to `GroqAdapter.generate()` (honors the server's own `Retry-After` header, bounded retries) rather than a fixed sleep guess — D-39. This also makes the live `/triage` endpoint more resilient under real load, not just the eval script.
+- Full suite: **112/112 unit tests passed**, lint/mypy clean on all new/changed files.
+
+### Known issues / open items
+- These numbers are **provisional on two counts**: gold labels are founder-reviewed, not yet qualified-electrical-person-reviewed (D-14/D-37); and `cause_match`/`step_checklist_coverage` are keyword heuristics, not a human rubric pass (D-38). Neither should appear in investor material or a paper draft as-is.
+- Only `requirement_complete` has been run at the generation level — the baselines (TopK, MMR, Knapsack, SafetySlot) haven't, so there's no real H1/H2 generation-level comparison yet, only the selection-level one from M5's `eval/run_eval.py`. Running the full matrix is a deliberate next step, not forgotten — `eval/run_generation_eval.py --methods topk,knapsack,mmr,safety_slot,requirement_complete --budgets 500,1000,2000` is ready to go, just not executed yet (cost/time tradeoff for a first pass).
+- "Citation precision" from CLAUDE.md §12 is still not implemented at all (D-38).
+- 10 answerable alarms is still short of D-14's 30-40 target — small-N caveat applies to every number above.
+
+### Next smallest step (superseded — see below)
+Either (a) run the full 5-method × 3-budget generation eval matrix for a real H1/H2 comparison at the generation level, or (b) grow the eval set past 10-12 alarms before trusting any comparison numbers further. Founder's call on which is more valuable next.
+
+## Eval set expanded to N=32 (free, selection-level only) + a real tagging bug found and fixed
+
+Picked up on API-call limits being the real constraint, not Claude usage: Groq (the LLM provider, D-33) is a separate, rate-limited, real-but-tiny-cost service — generation-level eval spends it, selection-level eval (`run_eval.py`) doesn't.
+
+### What works
+- **`data/synthetic/alarms.json` grown from 12 to 32 alarms** (D-40) — 20 new alarms (ids 13-32) across the same 6 real fault categories plus more unanswerable test cases (24 answerable + 8 unanswerable, matching CLAUDE.md §4.1's "~8 unanswerable" ratio), varied site/inverter/message wording only, no new categories or tags. Free to run through `run_eval.py` (no LLM calls); deliberately not gold-labelled (that's human work, D-14, not done here).
+- **Re-ran the selection-level eval at N=32** — the strongest H1/H2 evidence yet: `requirement_complete` is **0% answered-incomplete at every budget** (never silently drops mandatory evidence) vs 25-100% for the four baselines, and it's the *only* method that ever abstains — 100% abstention precision/recall, correctly flagging all 8 unanswerable alarms while every baseline confidently answers all of them. Full table in `eval/results/summary.md`.
+- **Ran a narrow, cheap generation-level comparison** (`requirement_complete` vs `topk`, one budget, the 10 gold-labelled answerable alarms + 2 unanswerable — 20 Groq calls, not the full 5×3 matrix) specifically to test H1 at the generation level: does a baseline's silently-missing mandatory evidence actually show up in a worse answer. **Found something more important than the comparison itself**: `requirement_complete` scored *worse* than `topk` on `gold_page_recall` (0.35 vs 0.8) — investigated instead of reported at face value, since that contradicts the whole point of the selector. Pulled the real manual pages 96-105 directly (not from memory) and traced it to a genuine tagging bug, not a selection-quality difference — logged as **D-41**:
+  - `safety_dc_isolation_sequence`'s keyword rules ("0.5 A", "disconnect the DC switch") matched a *different*, unrelated fault's text ("System Hardware Fault," page 104) and even generic installation-guide boilerplate (page 50) — the selector's cover phase picked those because they were cheaper in tokens, instead of the real page-103 procedure.
+  - `corrective_measures_present` (one id shared by all 6 fault categories) let an Excessive-Ambient-Temperature alarm's only mandatory requirement get satisfied by the *Boost Capacitor* fault's corrective text on page 104 — a different fault's content entirely.
+  - Fixed by adding `anchor_keywords_any` to the tag-rule schema (`src/suryasutra/ingest/tag.py`) — a second keyword group that must *also* match (the real fault's name), so generic procedural language alone can no longer satisfy a mandatory requirement with the wrong fault's text. Replaced the shared `corrective_measures_present` with 6 fault-specific ids. Added regression tests proving the exclusion (`test_anchor_keyword_excludes_wrong_fault_chunk_from_shared_safety_requirement`, `test_corrective_measures_requirements_are_fault_specific_not_shared`).
+  - Re-ran after the fix: `requirement_complete`'s `gold_page_recall` improved 0.35→0.45, `step_checklist_coverage` 0.41→0.50 — real, but still well below `topk`'s numbers, so the bug doesn't fully explain the gap.
+- **A second, unplanned finding, just as important**: re-running `topk` after the fix — whose selector never reads `chunk.covers` at all (confirmed by reading `TopKSelector.select()`) — produced *different* numbers than its first run (cause-match 0.2→0.4, step coverage 0.59→0.75) despite nothing relevant to it changing. Since its candidate chunks and prompt are deterministic, this is real Groq output variance at `temperature=0`, not a code effect — concrete evidence that single-shot generation-level comparisons at N=10 carry real noise comparable in size to the effects being measured. This is exactly why CLAUDE.md §12 calls for 3 runs on stochastic methods; not done here (API-budget tradeoff, flagged honestly rather than silently reported as decisive).
+- Full suite: **133/133 passed**, lint/mypy clean.
+
+### Known issues / open items
+- The `requirement_complete`-vs-`topk` generation comparison is still single-run, still N=10, and now demonstrably noisy (see above) — **do not treat `topk`'s higher page-recall as a settled finding**. A 3x-repeated version is the right next step before drawing any real conclusion.
+- A second, un-investigated page-recall gap remains: `low_system_insulation_resistance`'s real procedure spans manual pages 99→100, and the gold label correctly lists both, but the chunker/selector's "one id → one covering chunk" design only guarantees one of them gets cited. Not fixed — flagged as a structural limitation (a required item spanning multiple chunks), not another false-positive tagging bug like D-41's.
+- The `corrective_measures_*` fault-specific ids were given anchors by direct reading of the manual, not by a qualified electrical/PV person — still `review_status: unreviewed` for all of them (D-14's bar is unchanged by this fix; it was already unreviewed, and fixing a mechanical tagging bug isn't the same as expert sign-off).
+- No gold labels exist yet for alarms 13-32, so neither the generation-level comparison nor D-41's fix has been checked against the larger alarm set — only the original 12.
+
+### Next smallest step (superseded — see below)
+A 3x-repeated `requirement_complete`-vs-`topk` run (60 calls total) to get past the single-run noise found above, before drawing any real conclusion about which selector gives better generation-level answers.
+
+## M6 (Demo package) — Docker Compose: done; README/video: in progress
+
+CLAUDE.md §15/§16: "Docker Compose up in one command; README; 2-min demo video; honest results."
+
+### What works
+- `Dockerfile.backend` (Python 3.11-slim), `Dockerfile.frontend` (Node build → nginx static serve + `/api` reverse proxy via `web/nginx.conf`), `docker-compose.yml`, `.dockerignore`.
+- **Actually built and ran it**, not just written on paper (Docker Desktop had to be started first — asked the founder rather than attempting to launch a GUI/VM app blindly). Found and fixed a real bug this way (D-42): backend crashed on startup with an Alembic config error, traced to a regular `pip install .` copying source into `site-packages` and breaking `migrate.py`'s `__file__`-relative lookup of `alembic.ini`. Fixed with an editable install (`pip install -e .`).
+- Added a named volume for the Hugging Face embedding-model cache so a `down && up` cycle doesn't re-download the model every time.
+- **Verified for real**, both cold and cache-warmed: full stack builds clean; `/health`, `/alarms` (all 32), `/stats/usage`, and a real `/triage` call (live Groq response, citations and all) all work through the containerized backend; frontend serves at 200 and its nginx `/api` proxy correctly reaches the backend. Measured (not estimated) a cache-warmed restart at **45s** — most of that is a CPU-bound chunk-embedding step inside the container, confirmed via a staged timing script, not a hang.
+- data/raw (vendor manual, D-13) and data/processed (SQLite) are bind-mounted from the host, not baked into the image — consistent with never redistributing the manual.
+
+### Known issues / open items
+- README.md and a 2-minute demo video don't exist yet — next.
+- Startup is slow-ish (45s warm, longer cold) for a "one command" demo; acceptable for now, noted as a thing to revisit if it becomes a real friction point (e.g. pre-warming the index at build time).
+- The NREL O&M Best Practices guide (CLAUDE.md §4.1) was downloaded (`scripts/download_docs.sh`, `data/raw/SOURCES.md`) but was never actually wired into the ingestion pipeline — only the Sungrow manual is used (`MANUAL_PATH` in `api/state.py`). Worth stating plainly in the README rather than implying it's part of the corpus.
 
 ### Next smallest step
-Not decided — reasonable options: (a) `GET /stats/usage` + the dashboard screen, now that there's real data to read; (b) go back to the founder's eval gold-labelling task (D-14) to push M5 into generation-level metrics; (c) `POST /feedback`. Flagging rather than picking silently.
+Write `README.md` (pitch overview, quickstart, architecture summary, honest results pulled only from `eval/results/summary.md` and `summary_generation.md`, known limitations, CLAUDE.md §14 disclaimer). The 2-minute demo video needs the founder (screen recording), not something produced here.

@@ -17,6 +17,7 @@ def test_load_requirements_reads_real_config_file() -> None:
     assert req.review_status == "unreviewed"
     assert "manual" in req.doc_types
     assert any("0.5 A" in kw for kw in req.keywords_any)
+    assert "Boost Capacitor" in req.anchor_keywords_any
 
 
 def test_covers_matches_on_doc_type_and_keyword() -> None:
@@ -38,6 +39,36 @@ def test_covers_matches_on_doc_type_and_keyword() -> None:
     )
 
     assert covers(chunk, requirements) == frozenset({"safety_dc_isolation_sequence"})
+
+
+def test_covers_requires_anchor_keyword_when_present() -> None:
+    requirements = {
+        "r1": Requirement(
+            id="r1",
+            description="x",
+            review_status="unreviewed",
+            doc_types=frozenset({"manual"}),
+            keywords_any=("0.5 a",),
+            anchor_keywords_any=("boost capacitor", "pv grounding"),
+        ),
+    }
+    matching_chunk = Chunk(
+        text="Boost Capacitor fault: disconnect below 0.5 A.",
+        page_start=1,
+        page_end=1,
+        tokens=5,
+        doc_type="manual",
+    )
+    wrong_fault_chunk = Chunk(
+        text="System Hardware Fault: disconnect below 0.5 A.",
+        page_start=1,
+        page_end=1,
+        tokens=5,
+        doc_type="manual",
+    )
+
+    assert covers(matching_chunk, requirements) == frozenset({"r1"})
+    assert covers(wrong_fault_chunk, requirements) == frozenset()
 
 
 def test_covers_excludes_wrong_doc_type() -> None:
@@ -107,7 +138,72 @@ def test_real_fault_chunk_from_manual_is_tagged_correctly() -> None:
 
     tags = covers(chunk, requirements)
 
-    assert "corrective_measures_present" in tags
+    assert "corrective_measures_boost_capacitor" in tags
+
+
+def test_anchor_keyword_excludes_wrong_fault_chunk_from_shared_safety_requirement() -> None:
+    """D-41 regression: found via the generation eval that
+    `safety_dc_isolation_sequence`'s plain keywords ("0.5 A", "disconnect the DC
+    switch") also match other, unrelated fault rows in the manual's one big
+    troubleshooting table (here, a "System Hardware Fault" row) — without the fault-
+    name anchor, the selector's cover phase could satisfy a Boost-Capacitor/PV-
+    Grounding alarm's mandatory safety requirement with a completely different fault's
+    text, just because it was cheaper in tokens."""
+    requirements = load_requirements(REQUIREMENTS_PATH)
+    wrong_fault_chunk = Chunk(
+        text=(
+            "1616 System Hardware Fault\n"
+            "1. It is prohibited to disconnect the DC switch when the DC current is "
+            "greater than 0.5 A when the fault occurs.\n"
+            "2. Disconnect the DC switch only when the inverter DC side current drops "
+            "below 0.5 A."
+        ),
+        page_start=104,
+        page_end=104,
+        tokens=50,
+        doc_type="manual",
+    )
+
+    tags = covers(wrong_fault_chunk, requirements)
+
+    assert "safety_dc_isolation_sequence" not in tags
+
+
+def test_corrective_measures_requirements_are_fault_specific_not_shared() -> None:
+    """D-41: corrective_measures_present (one id shared by all 6 fault categories) was
+    replaced with a fault-specific id per category, after the generation eval showed a
+    excessive_ambient_temperature alarm's only mandatory requirement being satisfied by
+    the Boost Capacitor fault's corrective text instead of its own (manual page 99)."""
+    requirements = load_requirements(REQUIREMENTS_PATH)
+    ambient_temp_chunk = Chunk(
+        text=(
+            "37 Excessively High Ambient Temperature\n"
+            "Generally, the inverter will resume operation when the internal or module "
+            "temperature returns to normal. Contact Sungrow Power Customer Service if "
+            "the fault is due to other causes and the fault persists."
+        ),
+        page_start=99,
+        page_end=99,
+        tokens=50,
+        doc_type="manual",
+    )
+    boost_capacitor_chunk = Chunk(
+        text=(
+            "364-395 Boost Capacitor Overvoltage Fault\n"
+            "If the fault persists, please contact Sungrow Power Customer Service."
+        ),
+        page_start=103,
+        page_end=103,
+        tokens=30,
+        doc_type="manual",
+    )
+
+    assert "corrective_measures_ambient_temperature" in covers(ambient_temp_chunk, requirements)
+    assert "corrective_measures_boost_capacitor" not in covers(ambient_temp_chunk, requirements)
+    assert "corrective_measures_boost_capacitor" in covers(boost_capacitor_chunk, requirements)
+    assert "corrective_measures_ambient_temperature" not in covers(
+        boost_capacitor_chunk, requirements
+    )
 
 
 def test_load_requirements_missing_file_raises() -> None:

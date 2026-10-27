@@ -82,7 +82,7 @@ def test_list_alarms_returns_synthetic_alarms(client: TestClient) -> None:
 
     assert response.status_code == 200
     alarms = response.json()
-    assert len(alarms) == 12  # 10 answerable + 2 deliberately-unanswerable (D-14)
+    assert len(alarms) == 32  # 24 answerable + 8 deliberately-unanswerable (D-14, D-40)
     assert all(a["is_synthetic"] for a in alarms)
 
 
@@ -173,3 +173,178 @@ def test_get_run_unknown_id_returns_404(client: TestClient) -> None:
     response = client.get("/runs/999999")
 
     assert response.status_code == 404
+
+
+def test_persisted_run_flags_mandatory_coverage_gap_even_when_status_is_answered(
+    client: TestClient,
+) -> None:
+    """Regression for a real gap: an ANSWERED result can still have silently dropped
+    a mandatory requirement (H1's exact failure mode) — this must be visible in what
+    gets persisted, not just in the selector-level INSUFFICIENT case. Alarm 2 with
+    topk at budget 500 is a known real case of this (measured in the M5 eval run,
+    eval/results/*_topk_500.json), not a contrived fixture."""
+    state: AppState = client.app.state.suryasutra
+    original_llm = state.llm
+    state.llm = FakeLLMAdapter([_VALID_RESPONSE])
+    _fake_pricing_entry(state)
+    try:
+        triage_response = client.post(
+            "/triage", json={"alarm_id": 2, "method": "topk", "budget": 500}
+        )
+    finally:
+        state.llm = original_llm
+
+    assert triage_response.status_code == 200
+    assert triage_response.json()["status"] == "ANSWERED"
+
+    from suryasutra.db.models import TriageRun
+    from suryasutra.db.session import get_session
+
+    with get_session() as session:
+        run = (
+            session.query(TriageRun)
+            .filter_by(alarm_id=2, method="topk", budget=500)
+            .order_by(TriageRun.id.desc())
+            .first()
+        )
+        assert run is not None
+        assert run.status == "ANSWERED"
+        assert run.missing_requirements != []  # the gap, now visible despite ANSWERED
+
+
+def test_stats_usage_invalid_group_by_returns_400(client: TestClient) -> None:
+    response = client.get("/stats/usage?group_by=not_a_real_field")
+
+    assert response.status_code == 400
+
+
+def test_stats_usage_groups_real_run_by_method_and_budget(client: TestClient) -> None:
+    # budget=777 is distinctive enough that no other test in this module touches it,
+    # so this group's counts can be asserted exactly despite the shared test DB.
+    state: AppState = client.app.state.suryasutra
+    original_llm = state.llm
+    state.llm = FakeLLMAdapter([_VALID_RESPONSE])
+    _fake_pricing_entry(state)
+    try:
+        triage_response = client.post(
+            "/triage", json={"alarm_id": 1, "method": "requirement_complete", "budget": 777}
+        )
+    finally:
+        state.llm = original_llm
+    assert triage_response.status_code == 200
+
+    stats_response = client.get("/stats/usage?group_by=method,budget")
+
+    assert stats_response.status_code == 200
+    rows = stats_response.json()
+    row = next(r for r in rows if r["method"] == "requirement_complete" and r["budget"] == 777)
+    assert row["run_count"] == 1
+    assert row["answered_count"] == 1
+    assert row["insufficient_count"] == 0
+    assert row["full_mandatory_coverage_rate"] == 1.0
+    assert row["mean_cost_inr"] is not None and row["mean_cost_inr"] > 0
+    assert row["mean_input_tokens"] == 50
+
+
+def test_feedback_unknown_run_returns_404(client: TestClient) -> None:
+    response = client.post(
+        "/feedback",
+        json={"run_id": 999999, "user_role": "technician", "outcome": "fixed"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_feedback_invalid_outcome_returns_422(client: TestClient) -> None:
+    response = client.post(
+        "/feedback",
+        json={"run_id": 1, "user_role": "technician", "outcome": "not_a_real_outcome"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_feedback_persists_against_a_real_run(client: TestClient) -> None:
+    state: AppState = client.app.state.suryasutra
+    original_llm = state.llm
+    state.llm = FakeLLMAdapter([_VALID_RESPONSE])
+    _fake_pricing_entry(state)
+    try:
+        triage_response = client.post(
+            "/triage", json={"alarm_id": 1, "method": "requirement_complete", "budget": 888}
+        )
+    finally:
+        state.llm = original_llm
+    assert triage_response.status_code == 200
+
+    from suryasutra.db.models import TriageRun
+    from suryasutra.db.session import get_session
+
+    with get_session() as session:
+        run = (
+            session.query(TriageRun)
+            .filter_by(alarm_id=1, method="requirement_complete", budget=888)
+            .order_by(TriageRun.id.desc())
+            .first()
+        )
+        assert run is not None
+        run_id = run.id
+
+    feedback_response = client.post(
+        "/feedback",
+        json={
+            "run_id": run_id,
+            "user_role": "technician",
+            "outcome": "wrong_step",
+            "note": "Step 2 referenced the wrong switch.",
+        },
+    )
+
+    assert feedback_response.status_code == 200
+    body = feedback_response.json()
+    assert body["run_id"] == run_id
+    assert body["outcome"] == "wrong_step"
+    assert body["note"] == "Step 2 referenced the wrong switch."
+
+    from suryasutra.db.models import Feedback
+
+    with get_session() as session:
+        stored = session.query(Feedback).filter_by(run_id=run_id).one()
+        assert stored.outcome == "wrong_step"
+        assert stored.user_role == "technician"
+
+
+def test_feedback_allows_multiple_entries_per_run(client: TestClient) -> None:
+    state: AppState = client.app.state.suryasutra
+    original_llm = state.llm
+    state.llm = FakeLLMAdapter([_VALID_RESPONSE])
+    _fake_pricing_entry(state)
+    try:
+        triage_response = client.post(
+            "/triage", json={"alarm_id": 1, "method": "requirement_complete", "budget": 889}
+        )
+    finally:
+        state.llm = original_llm
+    assert triage_response.status_code == 200
+
+    from suryasutra.db.models import Feedback, TriageRun
+    from suryasutra.db.session import get_session
+
+    with get_session() as session:
+        run = (
+            session.query(TriageRun)
+            .filter_by(alarm_id=1, method="requirement_complete", budget=889)
+            .order_by(TriageRun.id.desc())
+            .first()
+        )
+        assert run is not None
+        run_id = run.id
+
+    client.post("/feedback", json={"run_id": run_id, "user_role": "technician", "outcome": "fixed"})
+    client.post(
+        "/feedback", json={"run_id": run_id, "user_role": "supervisor", "outcome": "not_fixed"}
+    )
+
+    with get_session() as session:
+        count = session.query(Feedback).filter_by(run_id=run_id).count()
+        assert count == 2

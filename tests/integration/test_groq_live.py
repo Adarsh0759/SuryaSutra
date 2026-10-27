@@ -42,7 +42,9 @@ def test_groq_adapter_live_call_returns_valid_cited_answer() -> None:
                 page_end=103,
                 tokens=80,
                 doc_type="manual",
-                covers=frozenset({"safety_dc_isolation_sequence", "corrective_measures_present"}),
+                covers=frozenset(
+                    {"safety_dc_isolation_sequence", "corrective_measures_boost_capacitor"}
+                ),
             ),
         ),
         tokens_used=80,

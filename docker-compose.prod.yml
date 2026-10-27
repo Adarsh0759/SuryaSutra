@@ -1,0 +1,9 @@
+# Used on the deploy server only, layered on top of docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# `!override` replaces the base file's port mapping (5173:80, for local dev) instead
+# of merging with it — Compose otherwise concatenates list-valued keys like `ports`
+# across -f files rather than replacing them.
+services:
+  frontend:
+    ports: !override
+      - "80:80"

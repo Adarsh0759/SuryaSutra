@@ -34,7 +34,7 @@ Four phases:
    are still skipped.
 4. Order: safety first, then cause/diagnosis, then procedure, then other — inferred
    from each chunk's `covers` ids via the naming convention established in
-   config/requirements.yaml (safety_*, cause_*, check_*/corrective_measures_present).
+   config/requirements.yaml (safety_*, cause_*, check_*/corrective_measures_*).
 """
 
 from suryasutra.ingest.chunk import Chunk
@@ -60,10 +60,7 @@ def _order_rank(chunk: Chunk) -> int:
         return 0
     if any(req_id.startswith("cause_") for req_id in chunk.covers):
         return 1
-    if any(
-        req_id.startswith("check_") or req_id == "corrective_measures_present"
-        for req_id in chunk.covers
-    ):
+    if any(req_id.startswith(("check_", "corrective_measures_")) for req_id in chunk.covers):
         return 2
     return 3
 

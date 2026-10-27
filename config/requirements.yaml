@@ -16,20 +16,85 @@ requirements:
     description: >
       Disconnect the AC circuit breaker on the grid side before the DC switch; wait
       until DC current drops below 0.5 A before disconnecting the DC switch or
-      unplugging PV terminals (manual pages 103-105).
+      unplugging PV terminals (manual page 103, the Boost Capacitor Overvoltage Fault
+      and PV Grounding Fault rows specifically).
     review_status: unreviewed
     tag_rules:
       doc_types: [manual, safety]
       keywords_any: ["disconnect the DC switch", "0.5 A", "AC circuit breaker"]
+      # D-41: the plain keywords above also match several *other* unrelated fault
+      # rows in the manual's one big troubleshooting table (e.g. "System Hardware
+      # Fault" on page 104, generic installation-guide boilerplate on page 50) — found
+      # via the generation eval, where the selector's cover phase picked one of those
+      # wrong-fault chunks instead of the real page-103 procedure because it was
+      # cheaper in tokens. Anchoring on the actual fault name forces coverage back onto
+      # the one chunk that is genuinely about this safety sequence.
+      anchor_keywords_any: ["Boost Capacitor", "PV Grounding"]
 
-  corrective_measures_present:
+  corrective_measures_boost_capacitor:
     description: >
-      Chunk contains the vendor's stated corrective measures for a fault code
-      (what to check/do, and when to escalate to Sungrow Customer Service).
+      The vendor's stated corrective measures for the Boost Capacitor Overvoltage
+      Fault specifically (manual page 103) — what to check/do, and when to escalate to
+      Sungrow Customer Service.
     review_status: unreviewed
     tag_rules:
       doc_types: [manual]
       keywords_any: ["Corrective Measures", "Contact Sungrow", "Customer Service"]
+      anchor_keywords_any: ["Boost Capacitor"]
+
+  corrective_measures_pv_grounding:
+    description: >
+      The vendor's stated corrective measures for the PV Grounding Fault specifically
+      (manual page 103).
+    review_status: unreviewed
+    tag_rules:
+      doc_types: [manual]
+      keywords_any: ["Corrective Measures", "Contact Sungrow", "Customer Service"]
+      anchor_keywords_any: ["PV Grounding"]
+
+  corrective_measures_low_insulation:
+    description: >
+      The vendor's stated corrective measures for Low System Insulation Resistance
+      (Earth Fault) specifically (manual pages 99-100).
+    review_status: unreviewed
+    tag_rules:
+      doc_types: [manual]
+      keywords_any: ["Corrective Measures", "Contact Sungrow", "Customer Service"]
+      anchor_keywords_any: ["Low System Insulation Resistance", "ISO resistance"]
+
+  corrective_measures_electric_arc:
+    description: >
+      The vendor's stated corrective measures for the Electric Arc Fault specifically
+      (manual page 100).
+    review_status: unreviewed
+    tag_rules:
+      doc_types: [manual]
+      keywords_any: ["Corrective Measures", "Contact Sungrow", "Customer Service"]
+      anchor_keywords_any: ["Electric Arc Fault"]
+
+  corrective_measures_meter_communication:
+    description: >
+      The vendor's stated corrective measures for the Meter Communication Abnormal
+      Alarm specifically (manual page 101).
+    review_status: unreviewed
+    tag_rules:
+      doc_types: [manual]
+      keywords_any: ["Corrective Measures", "Contact Sungrow", "Customer Service"]
+      anchor_keywords_any: ["Meter Communication"]
+
+  corrective_measures_ambient_temperature:
+    description: >
+      The vendor's stated corrective measures for the Excessively High Ambient
+      Temperature fault specifically (manual page 99). Previously this category's only
+      `must` requirement was the fault-agnostic `corrective_measures_present`, which
+      the generation eval showed being satisfied by a different fault's (Boost
+      Capacitor's) corrective text on page 104 — a real cross-fault contamination bug,
+      not just an imprecise citation (D-41).
+    review_status: unreviewed
+    tag_rules:
+      doc_types: [manual]
+      keywords_any: ["Corrective Measures", "Contact Sungrow", "Customer Service"]
+      anchor_keywords_any: ["Ambient Temperature"]
 
   safety_disconnect_dc_before_arc_repair:
     description: >
@@ -97,31 +162,31 @@ fault_categories:
   boost_capacitor_overvoltage_fault:
     match_codes: ["364-395"]
     must: [safety_dc_isolation_sequence]
-    optional: [corrective_measures_present]
+    optional: [corrective_measures_boost_capacitor]
 
   pv_grounding_fault:
     match_codes: ["1600-1615", "1632-1655"]
     must: [safety_dc_isolation_sequence]
-    optional: [corrective_measures_present]
+    optional: [corrective_measures_pv_grounding]
 
   low_system_insulation_resistance:
     match_codes: ["39"]
-    must: [cause_low_insulation_resistance, corrective_measures_present]
+    must: [cause_low_insulation_resistance, corrective_measures_low_insulation]
     optional: []
 
   electric_arc_fault:
     match_codes: ["88"]
     must: [cause_electric_arc_fault, safety_disconnect_dc_before_arc_repair]
-    optional: [corrective_measures_present]
+    optional: [corrective_measures_electric_arc]
 
   meter_communication_abnormal:
     match_codes: ["514"]
     must: [check_meter_communication]
-    optional: [corrective_measures_present]
+    optional: [corrective_measures_meter_communication]
 
   excessive_ambient_temperature:
     match_codes: ["37"]
-    must: [corrective_measures_present]
+    must: [corrective_measures_ambient_temperature]
     optional: [safety_fan_maintenance_isolation]
 
   battery_thermal_event_test:

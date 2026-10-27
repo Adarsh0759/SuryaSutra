@@ -1,10 +1,10 @@
 """SQLAlchemy ORM models (CLAUDE.md §9, D-18).
 
-Scoped to the three tables needed to persist a triage run and its usage: `alarms`,
-`triage_runs`, `usage`. `documents`/`chunks`/`requirements`/`feedback` stay file- and
-config-based for now — ingestion doesn't write to a DB at all (the corpus is rebuilt
-in-memory at process startup, D-15), and wiring that up is a separate, larger piece of
-work, not pulled in here unasked.
+Scoped to the tables needed to persist a triage run, its usage, and technician
+feedback on it: `alarms`, `triage_runs`, `usage`, `feedback`. `documents`/`chunks`/
+`requirements` stay file- and config-based for now — ingestion doesn't write to a DB
+at all (the corpus is rebuilt in-memory at process startup, D-15), and wiring that up
+is a separate, larger piece of work, not pulled in here unasked.
 """
 
 from datetime import datetime
@@ -57,6 +57,7 @@ class TriageRun(Base):
 
     alarm: Mapped["Alarm"] = relationship(back_populates="triage_runs")
     usage: Mapped["Usage | None"] = relationship(back_populates="run", uselist=False)
+    feedback: Mapped[list["Feedback"]] = relationship(back_populates="run")
 
 
 class Usage(Base):
@@ -70,3 +71,16 @@ class Usage(Base):
     latency_ms: Mapped[float | None] = mapped_column(default=None)
 
     run: Mapped["TriageRun"] = relationship(back_populates="usage")
+
+
+class Feedback(Base):
+    __tablename__ = "feedback"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("triage_runs.id"))
+    user_role: Mapped[str]  # e.g. "technician", "site_engineer" — free text for now
+    outcome: Mapped[str]  # "fixed" | "not_fixed" | "wrong_step" | "unsafe"
+    note: Mapped[str | None] = mapped_column(default=None)
+    created_at: Mapped[datetime]
+
+    run: Mapped["TriageRun"] = relationship(back_populates="feedback")

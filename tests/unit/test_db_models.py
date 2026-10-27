@@ -98,7 +98,7 @@ def test_seed_alarms_from_json_loads_real_synthetic_data(session: Session, tmp_p
     seed_alarms_from_json(session, alarms_path)
 
     count = session.query(Alarm).count()
-    assert count == 12
+    assert count == 32
     first = session.get(Alarm, 1)
     assert first is not None
     assert first.code == "370"
@@ -110,4 +110,4 @@ def test_seed_alarms_from_json_is_idempotent(session: Session) -> None:
     seed_alarms_from_json(session, alarms_path)
     seed_alarms_from_json(session, alarms_path)  # second call must not duplicate rows
 
-    assert session.query(Alarm).count() == 12
+    assert session.query(Alarm).count() == 32

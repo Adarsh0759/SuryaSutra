@@ -1,0 +1,178 @@
+# Hand-labelled eval ground truth (D-14, CLAUDE.md §12).
+#
+# STATUS: founder_reviewed. D-14's bar has two steps — "labelled by the founder, then
+# reviewed by a qualified electrical/PV person before publication." This file has
+# cleared the first: an initial AI-assisted draft (claude-sonnet-5, 2026-10-24, from a
+# fresh direct read of the manual) was reviewed against the manual and confirmed
+# correct by Adarsh (founder) on 2026-10-25. It has NOT yet had a qualified
+# electrical/PV person's sign-off — do not cite any metric computed from this file as
+# a finished research result or in investor material until that happens too; CLAUDE.md
+# §6/§14 and D-14 both require it before a safety claim is published.
+#
+# Per alarm (skipped for the deliberately-unanswerable ones — there is no correct
+# answer to name):
+#   gold_causes:            the correct diagnosis/diagnoses
+#   gold_mandatory_pages:   manual page numbers that MUST be retrieved/cited
+#                           for a safe, complete answer
+#   gold_step_checklist:    required actions/precautions a correct answer
+#                           must include (used to score step correctness —
+#                           exact wording doesn't need to match, the content
+#                           does)
+
+review_status: founder_reviewed
+drafted_by: "Initial draft: claude-sonnet-5 (AI-assisted, 2026-10-24). Reviewed against the manual and confirmed correct by Adarsh (founder) on 2026-10-25. Not yet reviewed by a qualified electrical/PV person — that sign-off is still required before publication (D-14)."
+alarms:
+  - alarm_id: 1
+    answerable: true
+    # Code 370 falls in the 364-395 "Boost Capacitor Overvoltage Fault" range (manual p.103).
+    gold_causes:
+      - "Boost capacitor overvoltage fault — the manual names the fault but does not explain the underlying electrical root cause beyond this; treat as the limit of what the source document supports."
+    gold_mandatory_pages:
+      - 103
+    gold_step_checklist:
+      - "Disconnect the AC and DC switches (and battery-side switches if batteries are present)"
+      - "Wait, then close the AC and DC switches in turn 15 minutes later and restart the system"
+      - "If the fault persists, contact Sungrow Power Customer Service"
+    notes: "Page 103's entry is self-contained; the general p.105 maintenance DANGER block was deliberately not added as mandatory since the fault-specific procedure already covers isolation."
+
+  - alarm_id: 2
+    answerable: true
+    # Code 1610 falls in the "1600-1615, 1632-1655" PV Grounding Fault range (manual p.103).
+    gold_causes:
+      - "PV grounding fault (earth fault on the PV/DC side)"
+    gold_mandatory_pages:
+      - 103
+    gold_step_checklist:
+      - "Do NOT directly disconnect the DC switch or unplug PV terminals while DC current is above 0.5 A — this is an explicit prohibition, not just a precaution"
+      - "Wait until DC current falls below 0.5 A, then disconnect the DC switch and unplug the faulty string(s)"
+      - "Do not reinsert the faulty strings before the grounding fault is cleared"
+      - "Contact Sungrow Customer Service if the fault persists and isn't explained by the above"
+    notes: "The clearest case of a hard mandatory safety sequence in the manual (explicit 'forbidden' language) — a strong candidate for spot-checking the selector's behavior on."
+
+  - alarm_id: 3
+    answerable: true
+    # Code 1645 falls in the same 1632-1655 PV Grounding Fault range as alarm 2.
+    gold_causes:
+      - "PV grounding fault (earth fault on the PV/DC side)"
+    gold_mandatory_pages:
+      - 103
+    gold_step_checklist:
+      - "Do NOT directly disconnect the DC switch or unplug PV terminals while DC current is above 0.5 A"
+      - "Wait until DC current falls below 0.5 A, then disconnect the DC switch and unplug the faulty string(s)"
+      - "Do not reinsert the faulty strings before the grounding fault is cleared"
+      - "Contact Sungrow Customer Service if the fault persists and isn't explained by the above"
+    notes: "Same underlying fault type as alarm 2 (different code in the same range) — gold data is intentionally identical."
+
+  - alarm_id: 4
+    answerable: true
+    # Code 39 "Low System Insulation Resistance (Earth Fault)", spans manual p.99-100.
+    gold_causes:
+      - "Low insulation resistance to ground — possible damaged insulation, short circuit, or a transient effect from wet/rainy conditions"
+    gold_mandatory_pages:
+      - 99
+      - 100
+    gold_step_checklist:
+      - "Check whether the ISO resistance protection value (via app/LCD) is set too high and complies with local regulations"
+      - "Check the resistance to ground of the string and DC cable; rectify if short circuit or damaged insulation is found"
+      - "If the cable is normal and the fault occurred on a rainy day, recheck once weather clears"
+      - "If batteries are present, check battery cables/terminals for damage or loose contact"
+      - "Contact Sungrow Customer Service if the above is ruled out and the fault persists"
+    notes: "The corrective-measures text for this fault spans the page break (99->100) — a real test of whether the chunker/selector handles a split procedure correctly."
+
+  - alarm_id: 5
+    answerable: true
+    # Code 88 "Electric Arc Fault" (manual p.100).
+    gold_causes:
+      - "Electric arc fault — damaged DC cable, a loose connection terminal or fuse, or a weak contact"
+    gold_mandatory_pages:
+      - 100
+    gold_step_checklist:
+      - "Disconnect the DC power supply before inspecting"
+      - "Check for a damaged DC cable, loose terminal/fuse, or weak contact; replace/fasten/repair as needed"
+      - "After repair, reconnect the DC power supply and clear the arc fault via the App or LCD"
+      - "Contact Sungrow Customer Service if the fault persists"
+    notes: ""
+
+  - alarm_id: 6
+    answerable: true
+    # Code 514 "Meter Communication Abnormal Alarm" (manual p.101).
+    gold_causes:
+      - "Communication failure between the inverter and the meter/CT — cable or terminal issue"
+    gold_mandatory_pages:
+      - 101
+    gold_step_checklist:
+      - "Check the communication cable and terminals for abnormalities; correct if found"
+      - "Reconnect the meter's communication cable"
+      - "Contact Sungrow Customer Service if the above is ruled out and the alarm persists"
+    notes: "No DC-isolation safety step applies here — this is a communications-only fault, not an electrical hazard per the manual's own framing."
+
+  - alarm_id: 7
+    answerable: true
+    # Code 37 "Excessively High Ambient Temperature" (manual p.99).
+    gold_causes:
+      - "Ambient temperature around the inverter too high — poor ventilation, direct sunlight exposure, or fan malfunction"
+    gold_mandatory_pages:
+      - 99
+    gold_step_checklist:
+      - "Check whether ambient temperature is genuinely too high"
+      - "Check the inverter is in a well-ventilated location"
+      - "Check for direct sunlight exposure; shield the inverter if so"
+      - "Check the fan is running properly; replace if not"
+      - "Contact Sungrow Customer Service if due to another cause and the fault persists"
+    notes: ""
+
+  - alarm_id: 8
+    answerable: true
+    # Code 380 falls in the same 364-395 Boost Capacitor Overvoltage Fault range as alarm 1.
+    gold_causes:
+      - "Boost capacitor overvoltage fault — the manual names the fault but does not explain the underlying electrical root cause beyond this."
+    gold_mandatory_pages:
+      - 103
+    gold_step_checklist:
+      - "Disconnect the AC and DC switches (and battery-side switches if batteries are present)"
+      - "Wait, then close the AC and DC switches in turn 15 minutes later and restart the system"
+      - "If the fault persists, contact Sungrow Power Customer Service"
+    notes: "Same underlying fault type as alarm 1 (different code in the same range, and the alarm message even notes the inverter already auto-restarted after 15 minutes) — gold data is intentionally identical to alarm 1."
+
+  - alarm_id: 9
+    answerable: true
+    # Code 1605 falls in the "1600-1615" PV Grounding Fault range, same as alarms 2/3.
+    gold_causes:
+      - "PV grounding fault (earth fault on the PV/DC side)"
+    gold_mandatory_pages:
+      - 103
+    gold_step_checklist:
+      - "Do NOT directly disconnect the DC switch or unplug PV terminals while DC current is above 0.5 A"
+      - "Wait until DC current falls below 0.5 A, then disconnect the DC switch and unplug the faulty string(s)"
+      - "Do not reinsert the faulty strings before the grounding fault is cleared"
+      - "Contact Sungrow Customer Service if the fault persists and isn't explained by the above"
+    notes: "Same underlying fault type as alarms 2/3."
+
+  - alarm_id: 10
+    answerable: true
+    # Code 37 "Excessively High Ambient Temperature", same as alarm 7 (manual p.99).
+    gold_causes:
+      - "Ambient temperature around the inverter too high — poor ventilation, direct sunlight exposure, or fan malfunction"
+    gold_mandatory_pages:
+      - 99
+    gold_step_checklist:
+      - "Check whether ambient temperature is genuinely too high"
+      - "Check the inverter is in a well-ventilated location"
+      - "Check for direct sunlight exposure; shield the inverter if so"
+      - "Check the fan is running properly; replace if not"
+      - "Contact Sungrow Customer Service if due to another cause and the fault persists"
+    notes: "Same underlying fault type as alarm 7; this alarm's own message also points at the fan specifically."
+
+  - alarm_id: 11
+    answerable: false
+    gold_causes: []
+    gold_mandatory_pages: []
+    gold_step_checklist: []
+    notes: "Deliberately unanswerable test case (code 9001, battery_thermal_event_test) — the manual has no dedicated lithium-battery thermal-runaway procedure (verified absent by direct text search when this requirement was created, config/requirements.yaml). No gold cause/pages/checklist applies; the correct system behavior is INSUFFICIENT."
+
+  - alarm_id: 12
+    answerable: false
+    gold_causes: []
+    gold_mandatory_pages: []
+    gold_step_checklist: []
+    notes: "Deliberately unanswerable test case, same as alarm 11 (code 9001)."

@@ -25,6 +25,16 @@ class Requirement:
     review_status: str
     doc_types: frozenset[str]
     keywords_any: tuple[str, ...]
+    # Optional second OR-group, ANDed with keywords_any (D-41). Added because several
+    # procedural keyword phrases ("0.5 A", "disconnect the DC switch", "Contact Sungrow
+    # Customer Service") recur across many unrelated fault-code rows in the manual's one
+    # big troubleshooting table — matching on keywords_any alone let the selector's
+    # cover phase satisfy a "must" requirement with a cheaper, wrong-fault chunk that
+    # happened to share that boilerplate language. anchor_keywords_any names the actual
+    # fault (e.g. "Boost Capacitor", "PV Grounding") that must also appear in the same
+    # chunk, so coverage can't be satisfied by a different fault's text. Empty tuple
+    # (the default) means no anchor is required, preserving old behaviour exactly.
+    anchor_keywords_any: tuple[str, ...] = ()
 
 
 def load_requirements(path: Path) -> dict[str, Requirement]:
@@ -38,6 +48,7 @@ def load_requirements(path: Path) -> dict[str, Requirement]:
             review_status=spec.get("review_status", "unreviewed"),
             doc_types=frozenset(tag_rules.get("doc_types", [])),
             keywords_any=tuple(tag_rules.get("keywords_any", [])),
+            anchor_keywords_any=tuple(tag_rules.get("anchor_keywords_any", [])),
         )
     return requirements
 
@@ -52,6 +63,10 @@ def covers(chunk: Chunk, requirements: dict[str, Requirement]) -> frozenset[str]
         if req.doc_types and chunk.doc_type not in req.doc_types:
             continue
         if req.keywords_any and not any(kw.lower() in text_lower for kw in req.keywords_any):
+            continue
+        if req.anchor_keywords_any and not any(
+            kw.lower() in text_lower for kw in req.anchor_keywords_any
+        ):
             continue
         covered.add(req.id)
     return frozenset(covered)

@@ -21,7 +21,12 @@ data/processed/*
 # Experiment outputs (D-26: keep summary, not every run)
 eval/results/*
 !eval/results/summary.md
+!eval/results/summary_generation.md
 !eval/results/.gitkeep
+
+# Regenerable, non-authoritative hints (D-14) — never the gold labels themselves,
+# which stay committed (data/eval/gold_labels.yaml, CLAUDE.md §8).
+data/eval/system_suggestions.yaml
 
 # Frontend
 web/node_modules/

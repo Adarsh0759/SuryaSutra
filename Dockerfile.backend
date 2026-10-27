@@ -1,0 +1,35 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# System deps for faiss-cpu / sentence-transformers wheels.
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml alembic.ini ./
+COPY src ./src
+COPY config ./config
+COPY data/synthetic ./data/synthetic
+COPY data/eval ./data/eval
+
+# CPU-only torch first: sentence-transformers otherwise pulls the default GPU build,
+# which drags in ~2GB of unused CUDA/NVIDIA packages (seen in practice: torch alone
+# 554MB, nvidia-cudnn 553MB, nvidia-cublas 423MB, ...). This inverter never runs on a
+# GPU, and the smaller image matters a lot more once this is deployed to a 1GB-RAM
+# EC2 instance rather than a dev machine.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Editable install: keeps source files at their real /app/src path rather than
+# copying them into site-packages, which would break db/migrate.py's path-based
+# lookup of alembic.ini (REPO_ROOT = Path(__file__).resolve().parents[3]) — the same
+# assumption pytest already relies on locally via pyproject.toml's `pythonpath`.
+RUN pip install --no-cache-dir -e .
+
+# data/raw (vendor manual, D-13 — never baked into the image) and data/processed
+# (SQLite file, FAISS cache) are bind-mounted from the host at runtime; this directory
+# only exists so the app can create them on first run if the mount is empty.
+RUN mkdir -p data/raw data/processed
+
+EXPOSE 8000
+
+CMD ["uvicorn", "suryasutra.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

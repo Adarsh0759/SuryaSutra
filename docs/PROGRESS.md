@@ -330,5 +330,27 @@ CLAUDE.md §15/§16: "Docker Compose up in one command; README; 2-min demo video
 - Startup is slow-ish (45s warm, longer cold) for a "one command" demo; acceptable for now, noted as a thing to revisit if it becomes a real friction point (e.g. pre-warming the index at build time).
 - The NREL O&M Best Practices guide (CLAUDE.md §4.1) was downloaded (`scripts/download_docs.sh`, `data/raw/SOURCES.md`) but was never actually wired into the ingestion pipeline — only the Sungrow manual is used (`MANUAL_PATH` in `api/state.py`). Worth stating plainly in the README rather than implying it's part of the corpus.
 
-### Next smallest step
+### Next smallest step (superseded — see below)
 Write `README.md` (pitch overview, quickstart, architecture summary, honest results pulled only from `eval/results/summary.md` and `summary_generation.md`, known limitations, CLAUDE.md §14 disclaimer). The 2-minute demo video needs the founder (screen recording), not something produced here.
+
+## AWS + Jenkins + Git deploy pipeline: done, live
+
+Explicitly beyond CLAUDE.md's own prototype scope (§15/§16 only calls for a local `docker compose up`) — the founder wanted a public demo URL plus hands-on AWS/Jenkins experience (D-43). Not a research/product milestone; tracked here because it's real, verified infrastructure work, not because CLAUDE.md asked for it.
+
+### What works
+- Two `t3.micro` EC2 instances (`suryasutra-app`, `suryasutra-jenkins`), provisioned via AWS CLI (Terraform explicitly declined — Docker, already built in M6, was chosen to satisfy "one of Terraform/Ansible/Docker/Kubernetes"). Security groups restrict SSH/Jenkins-UI to the founder's own IP; only port 80 is public.
+- `Jenkinsfile` — Jenkins never builds the (heavy) backend image itself; it SSHes to the app instance and runs the build/deploy there, keeping the 1GB Jenkins box to just git + an SSH client.
+- Jenkins itself was configured almost entirely headlessly via its Groovy script console API (plugin install, admin account creation, SSH credential creation, pipeline job creation) rather than clicking through the setup wizard — faster, and kept the one-time setup password's exposure window short (a real admin account replaced it within the same session).
+- **A real, previously-unknown bug found and fixed**: the backend's default `sentence-transformers` install pulled a GPU-enabled PyTorch build (~2GB of unused CUDA packages, 10.5GB image) — switched to CPU-only torch, image now 2.89GB. Benefits the local Docker Compose demo too, not just this deploy.
+- **A second real bug found and fixed**: the first two Jenkins pipeline runs failed with an SSH connection timeout despite the security group explicitly allowing it — root cause was addressing the app instance by its public IP, which breaks AWS's security-group-to-security-group source matching (that only works for traffic that stays inside the VPC). Fixed by using the app instance's private IP instead.
+- **Verified for real after the fix, not just "pipeline went green"**: re-checked `/`, `/api/health`, and `/api/alarms` (32 rows) against the live public IP after the Jenkins-triggered deploy completed.
+- Secret handling: AWS credentials were never pasted into this conversation (the founder ran `aws configure` themselves); the SSH private key was generated with output redirected straight to a file and later staged into Jenkins' credential store by having Jenkins' own script console read it from a temp path on its own disk, then deleting that temp file — the key's bytes never appeared in any visible command output.
+
+### Known issues / open items
+- No custom domain or HTTPS — bare HTTP on a raw public IP. Fine for a demo link, not for anything beyond that.
+- Running continuously, these are real (if free-tier-eligible) AWS resources with a real cost if the account's free-tier hours are otherwise used up — 3 pre-existing stopped instances were found in this account during setup (unrelated, untouched, kept entirely separate).
+- SCM polling (every 5 min), not a GitHub webhook — the Jenkins instance has no public inbound access for a webhook to reach, a deliberate tradeoff for the IP-restricted security group.
+- This whole deploy pipeline is outside CLAUDE.md's own scope (§15/§16's M6 only asks for local Docker Compose) — doesn't affect the research/eval track, kept as a clearly separate concern.
+
+### Next smallest step
+`README.md`'s 2-minute demo video still needs the founder (screen recording) — not something produced here. Otherwise, M6 and this deploy pipeline are both done; next real step is founder's call (grow the eval set, run the full 5-method generation matrix, or something else).

@@ -1,4 +1,8 @@
+import * as Dialog from '@radix-ui/react-dialog'
+import { X } from 'lucide-react'
+import { motion } from 'motion/react'
 import type { Source } from '../api/types'
+import { spring } from '../motion/tokens'
 
 interface SourcePanelProps {
   citationId: string
@@ -6,6 +10,8 @@ interface SourcePanelProps {
   onClose: () => void
 }
 
+/** Desktop: right-side panel. Mobile: same component, full-width via responsive
+ * classes (a true bottom sheet is a later iteration — see docs/APP_FLOW.md §3.5). */
 export function SourcePanel({ citationId, source, onClose }: SourcePanelProps) {
   const pageLabel =
     source.page_start === source.page_end
@@ -13,31 +19,43 @@ export function SourcePanel({ citationId, source, onClose }: SourcePanelProps) {
       : `pages ${source.page_start}-${source.page_end}`
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded bg-white p-4 shadow-lg dark:bg-slate-800"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="font-semibold text-slate-900 dark:text-slate-100">
-            Source [{citationId}] — {pageLabel}
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
-            aria-label="Close"
+    <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
+      <Dialog.Portal forceMount>
+        <Dialog.Overlay asChild forceMount>
+          <motion.div
+            className="fixed inset-0 z-50 bg-midnight/50"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          />
+        </Dialog.Overlay>
+        <Dialog.Content asChild forceMount aria-describedby={undefined}>
+          <motion.div
+            className="fixed top-0 right-0 z-50 h-full w-full max-w-md overflow-y-auto border-l border-border bg-surface-1 p-5 shadow-(--shadow-overlay)"
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={spring.soft}
           >
-            ✕
-          </button>
-        </div>
-        <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">
-          {source.text}
-        </p>
-      </div>
-    </div>
+            <div className="flex items-center justify-between gap-2">
+              <Dialog.Title className="font-mono text-sm text-text-1">
+                [{citationId}] · {pageLabel}
+              </Dialog.Title>
+              <Dialog.Close asChild>
+                <button
+                  type="button"
+                  className="text-text-3 transition-colors hover:text-text-1"
+                  aria-label="Close"
+                >
+                  <X size={18} strokeWidth={1.75} />
+                </button>
+              </Dialog.Close>
+            </div>
+            <p className="mt-3 text-sm whitespace-pre-wrap text-text-2">{source.text}</p>
+          </motion.div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }

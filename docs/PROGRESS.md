@@ -352,5 +352,26 @@ Explicitly beyond CLAUDE.md's own prototype scope (§15/§16 only calls for a lo
 - SCM polling (every 5 min), not a GitHub webhook — the Jenkins instance has no public inbound access for a webhook to reach, a deliberate tradeoff for the IP-restricted security group.
 - This whole deploy pipeline is outside CLAUDE.md's own scope (§15/§16's M6 only asks for local Docker Compose) — doesn't affect the research/eval track, kept as a clearly separate concern.
 
-### Next smallest step
+### Next smallest step (superseded — see below)
 `README.md`'s 2-minute demo video still needs the founder (screen recording) — not something produced here. Otherwise, M6 and this deploy pipeline are both done; next real step is founder's call (grow the eval set, run the full 5-method generation matrix, or something else).
+
+## New planning docs (PRD/TRD/APP_FLOW/DESIGN_BRIEF/BACKEND_SCHEMA) + design-system reskin: done
+
+Founder supplied five new planning documents describing a much larger product vision (see D-45). Committed as the new baseline alongside `CLAUDE.md`, then built the first, deliberately scoped slice: reskin the existing screens in the new design system, nothing else.
+
+### What works
+- `docs/PRD.md`, `docs/TRD.md`, `docs/APP_FLOW.md`, `docs/DESIGN_BRIEF.md`, `docs/BACKEND_SCHEMA.md` committed — a real, honest gap analysis against them is in this session's chat history and D-45, not repeated here.
+- **Resolved a real conflict rather than silently picking a side**: the new design brief says dark is the default theme; an earlier session explicitly asked for light-by-default. Asked; founder chose dark-by-default (D-45).
+- Design tokens (`web/src/styles/tokens.css`) implement the brief's full color system (midnight/lime/cobalt dark "control room" theme + light "Field mode") as Tailwind v4 `@theme` values — real utility classes (`bg-surface-1`, `text-danger`, etc.), not scattered arbitrary values. Motion tokens (`web/src/motion/tokens.ts`) match the brief's durations/easings/springs exactly.
+- New dependencies added with explicit agreement: `motion`, `@radix-ui/react-dialog`, `@radix-ui/react-tabs`, `lucide-react`, `@fontsource/inter`, `@fontsource/jetbrains-mono`.
+- Every existing screen reskinned: `App.tsx` (Radix `Tabs` nav, real theme toggle), `AlarmQueue.tsx`, `TriageView.tsx` (new dedicated `SafetyBox` component — never collapsible, per the brief's safety-first rule — plus a loading skeleton and staggered answer-reveal), `CompareView.tsx`/`TriagePanel.tsx` (shake animation on a genuinely missing safety requirement, never fabricated), `Dashboard.tsx`.
+- `SourcePanel.tsx` is now a real Radix `Dialog` sliding in from the right (matches `APP_FLOW.md` §3.5's desktop side-panel spec) — gets a proper focus trap and `Escape`-to-close for free, which the old plain modal didn't have.
+- **Verified for real, not assumed**: full `npm run build` and lint clean; all 3 e2e tests passing against the real backend and real Groq calls (two needed updating for intentionally changed copy/ARIA roles — `role="tab"` from Radix `Tabs.Trigger` instead of a generic button, new safety/insufficient wording — not bugs); every screen screenshotted in both themes (queue, triage idle/loading/result, source panel slide-in) to visually confirm contrast and layout before calling it done.
+
+### Known issues / open items
+- Scope was deliberately narrow: no landing page, no run-trace replay, no document-upload UI, no DB schema changes, no work-orders/past-fixes — all real parts of the new vision, left for a future, separately-scoped slice (D-45).
+- Font bundle is sizeable (`@fontsource` ships many language subsets by default) — not yet trimmed to just the subsets actually used; a cheap follow-up if bundle size becomes a real concern.
+- The live AWS deployment is still stopped (founder asked for this) — this reskin exists locally and is pushed to `main`, but hasn't been redeployed there yet.
+
+### Next smallest step
+Founder's call on the next slice — the landing page, a true mobile bottom-sheet for the source viewer, or the run-trace replay (the most distinctive demo-able gap) are the leading candidates from the new docs.

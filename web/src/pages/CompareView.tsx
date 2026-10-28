@@ -23,15 +23,13 @@ export function CompareView({ alarmId }: CompareViewProps) {
 
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-        Compare methods — alarm #{alarmId}
-      </h2>
+      <h2 className="text-lg font-semibold text-text-1">Compare methods — alarm #{alarmId}</h2>
 
-      <div className="flex flex-wrap items-end gap-3 rounded border border-slate-200 bg-amber-50 p-3 dark:border-slate-700 dark:bg-slate-800">
-        <label className="flex flex-col text-sm text-slate-600 dark:text-slate-300">
+      <div className="flex flex-wrap items-end gap-3 rounded-md border border-border bg-surface-1 p-3">
+        <label className="flex flex-col text-sm text-text-2">
           Method A
           <select
-            className="mt-1 rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+            className="mt-1 rounded-sm border border-border bg-surface-2 px-2 py-1 text-text-1"
             value={methodA}
             onChange={(e) => setMethodA(e.target.value as SelectorMethod)}
           >
@@ -42,10 +40,10 @@ export function CompareView({ alarmId }: CompareViewProps) {
             ))}
           </select>
         </label>
-        <label className="flex flex-col text-sm text-slate-600 dark:text-slate-300">
+        <label className="flex flex-col text-sm text-text-2">
           Method B
           <select
-            className="mt-1 rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+            className="mt-1 rounded-sm border border-border bg-surface-2 px-2 py-1 text-text-1"
             value={methodB}
             onChange={(e) => setMethodB(e.target.value as SelectorMethod)}
           >
@@ -56,19 +54,19 @@ export function CompareView({ alarmId }: CompareViewProps) {
             ))}
           </select>
         </label>
-        <label className="flex flex-col text-sm text-slate-600 dark:text-slate-300">
+        <label className="flex flex-col text-sm text-text-2">
           Budget (tokens, shared)
           <input
             type="number"
             min={1}
-            className="mt-1 w-32 rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+            className="mt-1 w-32 rounded-sm border border-border bg-surface-2 px-2 py-1 text-text-1"
             value={budget}
             onChange={(e) => setBudget(Number(e.target.value))}
           />
         </label>
         <button
           type="button"
-          className="rounded bg-amber-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 dark:bg-amber-500 dark:hover:bg-amber-600"
+          className="rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-text transition-transform hover:brightness-105 active:scale-[0.97] disabled:opacity-40"
           onClick={runBoth}
           disabled={mutationA.isPending || mutationB.isPending}
         >

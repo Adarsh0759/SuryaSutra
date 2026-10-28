@@ -1,24 +1,24 @@
 import { useEffect, useState } from 'react'
 
-type Theme = 'light' | 'dark'
+type Theme = 'dark' | 'light'
 const STORAGE_KEY = 'suryasutra-theme'
 
 function readStoredTheme(): Theme {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
-    return stored === 'dark' ? 'dark' : 'light'
+    return stored === 'light' ? 'light' : 'dark'
   } catch {
-    return 'light'
+    return 'dark'
   }
 }
 
-/** Defaults to light regardless of OS preference — the toggle is the only way to
- * reach dark mode, per the product decision to ship a light-first UI. */
+/** Dark "control room" is the default (docs/DESIGN_BRIEF.md) — light "Field
+ * mode" is an explicit opt-in via the toggle, not OS-detected. */
 export function useTheme(): [Theme, () => void] {
   const [theme, setTheme] = useState<Theme>(readStoredTheme)
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark')
+    document.documentElement.dataset.theme = theme
     try {
       localStorage.setItem(STORAGE_KEY, theme)
     } catch {
@@ -26,6 +26,6 @@ export function useTheme(): [Theme, () => void] {
     }
   }, [theme])
 
-  const toggle = () => setTheme((t) => (t === 'light' ? 'dark' : 'light'))
+  const toggle = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
   return [theme, toggle]
 }

@@ -17,11 +17,13 @@ test('alarm queue loads, triage runs, and a citation opens its source', async ({
 
   await page.getByRole('button', { name: 'Run triage' }).click()
 
-  const safetyOrInsufficient = page.getByText(/^Safety$/).or(page.getByText(/Insufficient evidence/))
+  const safetyOrInsufficient = page
+    .getByText(/Safety first/i)
+    .or(page.getByText(/Not enough evidence for a safe answer/))
   await expect(safetyOrInsufficient).toBeVisible({ timeout: 30_000 })
 
   const bodyText = await page.textContent('body')
-  if (bodyText?.includes('Insufficient evidence')) {
+  if (bodyText?.includes('Not enough evidence for a safe answer')) {
     // A genuinely possible outcome, not a test failure — INSUFFICIENT is a valid,
     // honest answer (D-06). Nothing further to check in this run.
     return
@@ -29,10 +31,11 @@ test('alarm queue loads, triage runs, and a citation opens its source', async ({
 
   await expect(page.getByText('Input tokens:')).toBeVisible()
 
-  const firstCitation = page.locator('button', { hasText: /^c\d+$/ }).first()
+  const firstCitation = page.locator('button', { hasText: /^\[c\d+\]$/ }).first()
   await firstCitation.click()
-  await expect(page.getByText(/^Source \[c\d+\]/)).toBeVisible()
+  const sourcePanelHeading = page.getByRole('heading', { name: /^\[c\d+\]/ })
+  await expect(sourcePanelHeading).toBeVisible()
 
   await page.getByRole('button', { name: 'Close' }).click()
-  await expect(page.getByText(/^Source \[c\d+\]/)).not.toBeVisible()
+  await expect(sourcePanelHeading).not.toBeVisible()
 })

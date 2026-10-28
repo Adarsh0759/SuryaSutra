@@ -28,6 +28,9 @@ eval/results/*
 # which stay committed (data/eval/gold_labels.yaml, CLAUDE.md §8).
 data/eval/system_suggestions.yaml
 
+# Regenerable PDF exports of docs/*.md (`python md_to_pdf.py`, not committed to repo)
+docs/pdf/
+
 # Frontend
 web/node_modules/
 web/dist/

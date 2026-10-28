@@ -9,10 +9,10 @@ test('dashboard shows real data after a triage run', async ({ page }) => {
   await page.locator('tbody tr').first().click()
   await page.getByRole('button', { name: 'Run triage' }).click()
   await expect(
-    page.getByText(/^Safety$/).or(page.getByText(/Insufficient evidence/)),
+    page.getByText(/Safety first/i).or(page.getByText(/Not enough evidence for a safe answer/)),
   ).toBeVisible({ timeout: 30_000 })
 
-  await page.getByRole('button', { name: 'Dashboard' }).click()
+  await page.getByRole('tab', { name: 'Dashboard' }).click()
 
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
   // Should not show the empty state, since a real run was just made.

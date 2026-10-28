@@ -373,5 +373,26 @@ Founder supplied five new planning documents describing a much larger product vi
 - Font bundle is sizeable (`@fontsource` ships many language subsets by default) — not yet trimmed to just the subsets actually used; a cheap follow-up if bundle size becomes a real concern.
 - The live AWS deployment is still stopped (founder asked for this) — this reskin exists locally and is pushed to `main`, but hasn't been redeployed there yet.
 
-### Next smallest step
+### Next smallest step (superseded — see below)
 Founder's call on the next slice — the landing page, a true mobile bottom-sheet for the source viewer, or the run-trace replay (the most distinctive demo-able gap) are the leading candidates from the new docs.
+
+## Landing page (`/`) — spatial design (3D tilt + glassmorphism): done
+
+Founder picked this as the next slice (D-46), with "spatial" narrowed down to 3D-tilt cards + glassmorphism through direct questions rather than guessing.
+
+### What works
+- Real routing added (`react-router-dom`, confirmed before installing): `/` is the new landing page, `/app` is the existing tool (unchanged behavior, just relocated — `AppShell.tsx`).
+- `web/src/landing/`: `Hero` (Instrument Serif headline, floating glass info-chips as a hero visual), `ProblemCards`, `HowItWorks` (the real 7-stage pipeline from `NLP_CONCEPTS.md`, with a scroll-drawn connecting line), `SafetyGuarantee` (illustrative token-budget animation, explicitly labelled "not a live run"), `Results` (the three real numbers from `eval/results/summary.md`, with source + run id shown on the page, plus an explicit "not yet measured" line for what isn't), `Footer`.
+- `GlassTiltCard` — reusable frosted-glass + cursor-following 3D tilt (Motion springs) + radial glow component, used throughout.
+- **Honesty discipline held under a flashier design ask**: no landing content claims something unmeasured is measured or something unbuilt (a real run-trace replay) is real — both the budget-bar demo and the hero visual are explicitly flagged in-page or in code comments as illustrative/simplified, not quietly passed off as more than they are.
+- **A real debugging moment, not just a UI build**: an initial `fullPage` Playwright screenshot showed several sections looking empty; instead of assuming the page was broken, re-verified by scrolling incrementally and screenshotting real scroll positions — the page was fine the whole time, the issue was `fullPage`'s instant-viewport-resize racing with Motion's `whileInView` triggers. Documented as a reusable lesson, not just silently worked around.
+- 4/4 e2e tests passing against the real backend (3 existing tests re-pointed `/` → `/app`, one new test for the landing page's CTA). Build/lint clean.
+
+### Known issues / open items
+- The hero visual is floating glass chips, not the custom hand-drawn SVG illustration (alarm bell → bridge arc → checklist) `DESIGN_BRIEF.md` §7.3 actually specifies — a conscious scope simplification, not a silent gap (D-46).
+- The safety-guarantee animation can't replay a real run yet — `GET /runs/{id}` doesn't return a candidate-by-candidate decision trace (`TRD.md` §3.2 describes this but it isn't built).
+- `lucide-react` doesn't ship a GitHub icon (brand icons were dropped from the package) — used a generic code icon instead for the footer link.
+- Landing page isn't deployed to the (currently stopped) AWS instance yet — exists locally, pushed to `main`.
+
+### Next smallest step
+Founder's call — remaining candidates from the new docs: a real run-trace endpoint + replay, a true mobile bottom-sheet for the source viewer, or redeploying to AWS once the founder wants the live site back up.

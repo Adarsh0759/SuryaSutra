@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test'
 // reads that real row back — not a mock of any layer.
 
 test('dashboard shows real data after a triage run', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/app')
 
   await page.locator('tbody tr').first().click()
   await page.getByRole('button', { name: 'Run triage' }).click()

@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test'
 // verification of CLAUDE.md §11's compare mode, not a mock.
 
 test('compare mode runs two methods side by side on the same alarm', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/app')
 
   await page.locator('tbody tr').first().click()
   await page.getByLabel('Compare mode').check()

@@ -18,3 +18,8 @@ class FeedbackRequest(BaseModel):
     user_role: str
     outcome: Literal["fixed", "not_fixed", "wrong_step", "unsafe"]
     note: str | None = None
+
+
+class FeedbackUpdateRequest(BaseModel):
+    outcome: Literal["fixed", "not_fixed", "wrong_step", "unsafe"] | None = None
+    note: str | None = None

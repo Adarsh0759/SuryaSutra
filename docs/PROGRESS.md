@@ -394,5 +394,24 @@ Founder picked this as the next slice (D-46), with "spatial" narrowed down to 3D
 - `lucide-react` doesn't ship a GitHub icon (brand icons were dropped from the package) — used a generic code icon instead for the footer link.
 - Landing page isn't deployed to the (currently stopped) AWS instance yet — exists locally, pushed to `main`.
 
-### Next smallest step
+### Next smallest step (superseded — see below)
 Founder's call — remaining candidates from the new docs: a real run-trace endpoint + replay, a true mobile bottom-sheet for the source viewer, or redeploying to AWS once the founder wants the live site back up.
+
+## Feedback CRUD completion + sign-in gate (for an external grading rubric): done
+
+Founder supplied a 20-mark grading rubric and asked whether the project satisfied it. Checked against the real code rather than assuming — found two real, specific gaps (D-47) and fixed both.
+
+### What works
+- **Full CRUD on `feedback`, for real**: `GET /feedback` (list), `PATCH /feedback/{id}`, `DELETE /feedback/{id}` added alongside the existing `POST`. Previously the whole API had Create+Read but no Update or Delete on any table.
+- **The previously-dead `POST /feedback` endpoint now has a real frontend**: `FeedbackForm` (submit an outcome right after a triage answer) and a `Feedback` tab (`FeedbackList`, with working inline edit and delete) — this is genuinely new, not just a wrapper; it's the first UI this endpoint has ever had.
+- `run_id` added to the `/triage` response (API layer only, `generation/schema.py` untouched — keeps D-28's layering) so the frontend can actually submit feedback against the run that was just shown.
+- **A real sign-in screen** (`SignInGate`/`useIdentity`) gating `/app` — name + role, kept in `localStorage`. Explicitly labelled as identification, not authentication, in the UI copy itself. Deliberately not fake password-protected "auth," which would have been worse than no login at all.
+- 7 new backend integration tests (list/update/delete, including 404 cases) — 139 backend tests passing. All 4 pre-existing e2e tests updated to sign in first (new `/app` gate) via a shared `e2e/signIn.ts` helper, plus one new e2e test covering the full feedback CRUD cycle through the real UI — 5/5 e2e passing.
+- **Verified for real in a live browser**, not just "tests pass": sign in → real triage (real Groq call) → submit feedback → edit it → delete it, zero console errors — plus caught and corrected a false alarm during manual verification (a loosely-written check script made the Feedback tab look broken; a more precise re-check showed it was correct the whole time — documented in D-47 so it isn't mistaken for a real bug later).
+
+### Known issues / open items
+- The sign-in is local-only identification (no server-side account) — real auth is still correctly pilot-stage scope (D-35), not built here.
+- Feedback CRUD UI is minimal (inline edit row, no confirmation dialog on delete) — functional, not polished.
+
+### Next smallest step
+Founder's call — give the "how to run locally" instructions and the rubric assessment (requested alongside this work), or continue with one of the still-open landing-page-vision items (run-trace replay, mobile bottom sheet, AWS redeploy).

@@ -1,21 +1,35 @@
 import * as Tabs from '@radix-ui/react-tabs'
-import { Moon, Sun, SunMedium } from 'lucide-react'
+import { LogOut, Moon, Sun, SunMedium } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { SignInGate } from './components/SignInGate'
 import { AlarmQueue } from './pages/AlarmQueue'
 import { CompareView } from './pages/CompareView'
 import { Dashboard } from './pages/Dashboard'
+import { FeedbackList } from './pages/FeedbackList'
 import { TriageView } from './pages/TriageView'
+import { useIdentity } from './useIdentity'
 import { useTheme } from './useTheme'
 
-type Tab = 'queue' | 'dashboard'
+type Tab = 'queue' | 'feedback' | 'dashboard'
+
+const TAB_LABELS: Record<Tab, string> = {
+  queue: 'Alarm queue',
+  feedback: 'Feedback',
+  dashboard: 'Dashboard',
+}
 
 export function AppShell() {
+  const [identity, setIdentity, clearIdentity] = useIdentity()
   const [tab, setTab] = useState<Tab>('queue')
   const [selectedAlarmId, setSelectedAlarmId] = useState<number | null>(null)
   const [compareMode, setCompareMode] = useState(false)
   const [theme, toggleTheme] = useTheme()
+
+  if (!identity) {
+    return <SignInGate onSignIn={setIdentity} />
+  }
 
   return (
     <div className="min-h-svh bg-bg">
@@ -30,33 +44,46 @@ export function AppShell() {
               From alarm to safe action, with the source on every step.
             </p>
           </Link>
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface-2 px-3 py-1.5 text-sm font-medium text-text-1 transition-colors hover:border-interactive"
-            aria-label="Toggle theme"
-          >
-            {theme === 'dark' ? (
-              <>
-                <Sun size={16} strokeWidth={1.75} /> Field mode
-              </>
-            ) : (
-              <>
-                <Moon size={16} strokeWidth={1.75} /> Dark
-              </>
-            )}
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="hidden text-sm text-text-2 sm:inline">
+              {identity.name} · {identity.role.replace('_', ' ')}
+            </span>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="flex items-center gap-1.5 rounded-full border border-border bg-surface-2 px-3 py-1.5 text-sm font-medium text-text-1 transition-colors hover:border-interactive"
+              aria-label="Toggle theme"
+            >
+              {theme === 'dark' ? (
+                <>
+                  <Sun size={16} strokeWidth={1.75} /> Field mode
+                </>
+              ) : (
+                <>
+                  <Moon size={16} strokeWidth={1.75} /> Dark
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={clearIdentity}
+              className="rounded-full border border-border bg-surface-2 p-2 text-text-2 transition-colors hover:border-danger hover:text-danger"
+              aria-label="Sign out"
+            >
+              <LogOut size={16} strokeWidth={1.75} />
+            </button>
+          </div>
         </header>
 
         <Tabs.Root value={tab} onValueChange={(v) => setTab(v as Tab)}>
           <Tabs.List className="flex gap-2 border-b border-border">
-            {(['queue', 'dashboard'] as const).map((t) => (
+            {(['queue', 'feedback', 'dashboard'] as const).map((t) => (
               <Tabs.Trigger
                 key={t}
                 value={t}
                 className="px-3 py-2 text-sm font-medium text-text-2 transition-colors hover:text-text-1 data-[state=active]:border-b-2 data-[state=active]:border-accent data-[state=active]:text-text-1"
               >
-                {t === 'queue' ? 'Alarm queue' : 'Dashboard'}
+                {TAB_LABELS[t]}
               </Tabs.Trigger>
             ))}
           </Tabs.List>
@@ -70,7 +97,7 @@ export function AppShell() {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.22 }}
           >
-            {tab === 'queue' ? (
+            {tab === 'queue' && (
               <div className="flex flex-col gap-4">
                 <AlarmQueue selectedAlarmId={selectedAlarmId} onSelectAlarm={setSelectedAlarmId} />
 
@@ -92,9 +119,9 @@ export function AppShell() {
                   </>
                 )}
               </div>
-            ) : (
-              <Dashboard />
             )}
+            {tab === 'feedback' && <FeedbackList />}
+            {tab === 'dashboard' && <Dashboard />}
           </motion.div>
         </AnimatePresence>
       </div>

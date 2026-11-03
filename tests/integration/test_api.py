@@ -348,3 +348,131 @@ def test_feedback_allows_multiple_entries_per_run(client: TestClient) -> None:
     with get_session() as session:
         count = session.query(Feedback).filter_by(run_id=run_id).count()
         assert count == 2
+
+
+def test_triage_response_includes_run_id(client: TestClient) -> None:
+    """The answer contract itself (CLAUDE.md §10) has no run id — added at the API
+    layer because the frontend needs it to submit feedback against this specific run."""
+    state: AppState = client.app.state.suryasutra
+    original_llm = state.llm
+    state.llm = FakeLLMAdapter([_VALID_RESPONSE])
+    _fake_pricing_entry(state)
+    try:
+        response = client.post(
+            "/triage", json={"alarm_id": 1, "method": "requirement_complete", "budget": 890}
+        )
+    finally:
+        state.llm = original_llm
+
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body["run_id"], int)
+
+    from suryasutra.db.models import TriageRun
+    from suryasutra.db.session import get_session
+
+    with get_session() as session:
+        run = session.get(TriageRun, body["run_id"])
+        assert run is not None
+        assert run.budget == 890
+
+
+def test_list_feedback_returns_real_entries(client: TestClient) -> None:
+    state: AppState = client.app.state.suryasutra
+    original_llm = state.llm
+    state.llm = FakeLLMAdapter([_VALID_RESPONSE])
+    _fake_pricing_entry(state)
+    try:
+        triage_response = client.post(
+            "/triage", json={"alarm_id": 1, "method": "requirement_complete", "budget": 891}
+        )
+    finally:
+        state.llm = original_llm
+    run_id = triage_response.json()["run_id"]
+
+    created = client.post(
+        "/feedback", json={"run_id": run_id, "user_role": "technician", "outcome": "fixed"}
+    ).json()
+
+    response = client.get("/feedback")
+
+    assert response.status_code == 200
+    ids = [f["id"] for f in response.json()]
+    assert created["id"] in ids
+
+
+def test_update_feedback_changes_outcome_and_note(client: TestClient) -> None:
+    state: AppState = client.app.state.suryasutra
+    original_llm = state.llm
+    state.llm = FakeLLMAdapter([_VALID_RESPONSE])
+    _fake_pricing_entry(state)
+    try:
+        triage_response = client.post(
+            "/triage", json={"alarm_id": 1, "method": "requirement_complete", "budget": 892}
+        )
+    finally:
+        state.llm = original_llm
+    run_id = triage_response.json()["run_id"]
+
+    created = client.post(
+        "/feedback", json={"run_id": run_id, "user_role": "technician", "outcome": "fixed"}
+    ).json()
+
+    response = client.patch(
+        f"/feedback/{created['id']}",
+        json={"outcome": "wrong_step", "note": "Actually step 3 was wrong."},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["outcome"] == "wrong_step"
+    assert body["note"] == "Actually step 3 was wrong."
+
+    from suryasutra.db.models import Feedback
+    from suryasutra.db.session import get_session
+
+    with get_session() as session:
+        stored = session.get(Feedback, created["id"])
+        assert stored is not None
+        assert stored.outcome == "wrong_step"
+
+
+def test_update_feedback_unknown_id_returns_404(client: TestClient) -> None:
+    response = client.patch("/feedback/999999", json={"outcome": "fixed"})
+
+    assert response.status_code == 404
+
+
+def test_delete_feedback_removes_entry(client: TestClient) -> None:
+    state: AppState = client.app.state.suryasutra
+    original_llm = state.llm
+    state.llm = FakeLLMAdapter([_VALID_RESPONSE])
+    _fake_pricing_entry(state)
+    try:
+        triage_response = client.post(
+            "/triage", json={"alarm_id": 1, "method": "requirement_complete", "budget": 893}
+        )
+    finally:
+        state.llm = original_llm
+    run_id = triage_response.json()["run_id"]
+
+    created = client.post(
+        "/feedback", json={"run_id": run_id, "user_role": "technician", "outcome": "fixed"}
+    ).json()
+
+    response = client.delete(f"/feedback/{created['id']}")
+
+    assert response.status_code == 200
+    assert response.json() == {"deleted": created["id"]}
+
+    from suryasutra.db.models import Feedback
+    from suryasutra.db.session import get_session
+
+    with get_session() as session:
+        assert session.get(Feedback, created["id"]) is None
+
+
+def test_delete_feedback_unknown_id_returns_404(client: TestClient) -> None:
+    response = client.delete("/feedback/999999")
+
+    assert response.status_code == 404

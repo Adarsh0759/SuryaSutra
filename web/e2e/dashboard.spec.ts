@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test'
+import { signIn } from './signIn'
 
 // Real backend, real LLM call, real DB write, then checks the dashboard actually
 // reads that real row back — not a mock of any layer.
 
 test('dashboard shows real data after a triage run', async ({ page }) => {
-  await page.goto('/app')
+  await signIn(page)
 
   await page.locator('tbody tr').first().click()
   await page.getByRole('button', { name: 'Run triage' }).click()

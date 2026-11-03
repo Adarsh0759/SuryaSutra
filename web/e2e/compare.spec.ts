@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test'
+import { signIn } from './signIn'
 
 // Drives the real backend with two real Groq calls (one per method) — genuine
 // verification of CLAUDE.md §11's compare mode, not a mock.
 
 test('compare mode runs two methods side by side on the same alarm', async ({ page }) => {
-  await page.goto('/app')
+  await signIn(page)
 
   await page.locator('tbody tr').first().click()
   await page.getByLabel('Compare mode').check()

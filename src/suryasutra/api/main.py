@@ -13,7 +13,7 @@ from config.settings import settings
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from suryasutra.api.schemas import FeedbackRequest, TriageRequest
+from suryasutra.api.schemas import FeedbackRequest, FeedbackUpdateRequest, TriageRequest
 from suryasutra.api.state import AppState
 from suryasutra.db.models import Alarm, Feedback, TriageRun
 from suryasutra.db.models import Usage as UsageRow
@@ -115,10 +115,10 @@ def triage(req: TriageRequest, request: Request) -> dict[str, Any]:
             missing_requirements=missing_mandatory,
             suggested_next="Add more evidence sources, or increase the token budget.",
         )
-        _persist_run(
+        run_id = _persist_run(
             req, alarm["id"], contract, selected_chunk_ids=[], missing_mandatory=missing_mandatory
         )
-        return contract.model_dump()
+        return {**contract.model_dump(), "run_id": run_id}
 
     if state.llm is None:
         raise HTTPException(status_code=503, detail="LLM not configured (GROQ_API_KEY missing)")
@@ -133,14 +133,14 @@ def triage(req: TriageRequest, request: Request) -> dict[str, Any]:
         pricing=state.pricing,
     )
     selected_ids = list(result.sources.keys()) if isinstance(result, AnsweredContract) else []
-    _persist_run(
+    run_id = _persist_run(
         req,
         alarm["id"],
         result,
         selected_chunk_ids=selected_ids,
         missing_mandatory=missing_mandatory,
     )
-    return result.model_dump()
+    return {**result.model_dump(), "run_id": run_id}
 
 
 def _persist_run(
@@ -149,10 +149,13 @@ def _persist_run(
     contract: AnsweredContract | InsufficientContract,
     selected_chunk_ids: list[str],
     missing_mandatory: list[str],
-) -> None:
+) -> int:
     """Writes one triage_runs row (+ a usage row when the LLM was actually called).
     An INSUFFICIENT contract from the selector phase never reaches generation, so it
-    naturally has no usage row — nothing was spent."""
+    naturally has no usage row — nothing was spent. Returns the new row's id so the
+    caller can hand it back to the client (needed to submit feedback against this
+    specific run — CLAUDE.md §10 doesn't include it in the answer contract itself, so
+    it's added here at the API layer rather than conflating the two)."""
     with get_session() as session:
         run = TriageRun(
             alarm_id=alarm_id,
@@ -181,6 +184,8 @@ def _persist_run(
                     cost_inr=contract.usage.cost_inr,
                 )
             )
+
+        return run.id
 
 
 @app.get("/runs/{run_id}")
@@ -297,3 +302,57 @@ def submit_feedback(req: FeedbackRequest) -> dict[str, Any]:
             "note": entry.note,
             "created_at": entry.created_at.isoformat(),
         }
+
+
+@app.get("/feedback")
+def list_feedback() -> list[dict[str, Any]]:
+    """Every submitted feedback entry, most recent first — completes the CRUD surface
+    on this table (POST above creates; this reads; PATCH/DELETE below update/delete)."""
+    with get_session() as session:
+        rows = session.query(Feedback).order_by(Feedback.created_at.desc()).all()
+        return [
+            {
+                "id": f.id,
+                "run_id": f.run_id,
+                "user_role": f.user_role,
+                "outcome": f.outcome,
+                "note": f.note,
+                "created_at": f.created_at.isoformat(),
+            }
+            for f in rows
+        ]
+
+
+@app.patch("/feedback/{feedback_id}")
+def update_feedback(feedback_id: int, req: FeedbackUpdateRequest) -> dict[str, Any]:
+    """Lets a technician correct their own submitted feedback (e.g. picked the wrong
+    outcome, wants to add a note) rather than it being permanently wrong once sent."""
+    with get_session() as session:
+        entry = session.get(Feedback, feedback_id)
+        if entry is None:
+            raise HTTPException(status_code=404, detail=f"feedback {feedback_id} not found")
+
+        if req.outcome is not None:
+            entry.outcome = req.outcome
+        if req.note is not None:
+            entry.note = req.note
+        session.flush()
+        return {
+            "id": entry.id,
+            "run_id": entry.run_id,
+            "user_role": entry.user_role,
+            "outcome": entry.outcome,
+            "note": entry.note,
+            "created_at": entry.created_at.isoformat(),
+        }
+
+
+@app.delete("/feedback/{feedback_id}")
+def delete_feedback(feedback_id: int) -> dict[str, Any]:
+    with get_session() as session:
+        entry = session.get(Feedback, feedback_id)
+        if entry is None:
+            raise HTTPException(status_code=404, detail=f"feedback {feedback_id} not found")
+
+        session.delete(entry)
+        return {"deleted": feedback_id}

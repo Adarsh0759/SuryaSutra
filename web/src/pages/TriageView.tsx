@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { runTriage } from '../api/client'
 import { SELECTOR_METHODS, type SelectorMethod } from '../api/types'
 import { CitationChips } from '../components/CitationChips'
+import { FeedbackForm } from '../components/FeedbackForm'
 import { SafetyBox } from '../components/SafetyBox'
 import { SourcePanel } from '../components/SourcePanel'
 import { stagger } from '../motion/tokens'
@@ -185,6 +186,8 @@ export function TriageView({ alarmId }: TriageViewProps) {
             <span>Budget: {result.usage.budget}</span>
             <span>Method: {result.usage.method}</span>
           </div>
+
+          <FeedbackForm key={result.run_id} runId={result.run_id} />
 
           {openCitation && result.sources[openCitation] && (
             <SourcePanel

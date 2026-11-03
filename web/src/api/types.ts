@@ -58,6 +58,9 @@ export interface AnsweredContract {
   uncertainties: string[]
   sources: Record<string, Source>
   usage: Usage
+  // Not part of the answer contract itself (CLAUDE.md §10) — added at the API layer
+  // so the UI can submit feedback against this specific run.
+  run_id: number
 }
 
 export interface InsufficientContract {
@@ -65,6 +68,7 @@ export interface InsufficientContract {
   reason: 'no_evidence' | 'over_budget' | 'citation_validation_failed'
   missing_requirements: string[]
   suggested_next: string
+  run_id: number
 }
 
 export type TriageResult = AnsweredContract | InsufficientContract
@@ -78,6 +82,18 @@ export const SELECTOR_METHODS = [
 ] as const
 
 export type SelectorMethod = (typeof SELECTOR_METHODS)[number]
+
+export const FEEDBACK_OUTCOMES = ['fixed', 'not_fixed', 'wrong_step', 'unsafe'] as const
+export type FeedbackOutcome = (typeof FEEDBACK_OUTCOMES)[number]
+
+export interface Feedback {
+  id: number
+  run_id: number
+  user_role: string
+  outcome: FeedbackOutcome
+  note: string | null
+  created_at: string
+}
 
 // GET /stats/usage — one row per method/budget group (CLAUDE.md §11 screen 4).
 // Means are null when a group has no ANSWERED runs with usage yet (nothing to

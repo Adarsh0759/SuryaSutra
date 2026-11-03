@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test'
+import { signIn } from './signIn'
 
 // This drives the real backend, including a real call to the actual Groq model on
 // "Run triage" (GROQ_API_KEY must be set in .env) — genuine browser verification of
 // CLAUDE.md §11's triage view, not just a type-check or a mocked unit test.
 
 test('alarm queue loads, triage runs, and a citation opens its source', async ({ page }) => {
-  await page.goto('/app')
+  await signIn(page)
 
   await expect(page.getByRole('heading', { name: 'Alarm queue' })).toBeVisible()
 

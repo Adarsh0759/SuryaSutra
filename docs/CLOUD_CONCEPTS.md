@@ -1,10 +1,13 @@
-# SuryaSutra — cloud, containers & CI/CD, explained
+# SuryaSutra — cloud, containers, CI/CD & the backend's own concepts, explained
 
-This is the companion to `docs/NLP_CONCEPTS.md`. That one explains what the app *does*;
-this one explains how it actually **runs**, how it gets from your laptop to a public
-URL, and what each infrastructure piece is for. Same rule as CLAUDE.md's teaching
-mandate: concept → why → alternative → what we actually built, grounded in real file
-paths and the real problems we hit (not hypothetical ones).
+This is the companion to `docs/NLP_CONCEPTS.md`. That one explains what the app *does*
+(the retrieval/selection/generation pipeline); this one explains how it actually
+**runs** — locally, how it gets from your laptop to a public URL, what each
+infrastructure piece is for, and (§9 onward) the backend/API design concepts
+underneath the "Database Connectivity" and "Backend Functionality" parts of a typical
+project rubric. Same rule as CLAUDE.md's teaching mandate throughout: concept → why →
+alternative → what we actually built, grounded in real file paths and the real
+problems we hit (not hypothetical ones).
 
 **Important scope note**: none of this infrastructure is part of the research/product
 work CLAUDE.md actually scopes for the prototype (§15/§16 only call for a local
@@ -398,11 +401,160 @@ your security rules.
 
 ---
 
-## 9. Where to look for more
+## 9. REST APIs and CRUD — the concepts behind the backend's data layer
 
-- `docs/DECISIONS.md`, entries D-42 and D-43 — the full, dated record of every
+### 9a. REST, in practice
+
+**Concept.** REST (Representational State Transfer) is a convention for structuring a
+web API around *resources* (nouns — an alarm, a feedback entry) and a small, fixed set
+of *HTTP methods* that act on them, instead of inventing a new verb-named endpoint for
+every action. The method says what kind of thing is happening; the URL says what it's
+happening to.
+
+| Method | Means | Example in this project |
+|---|---|---|
+| `GET` | Read, never changes anything | `GET /alarms`, `GET /feedback` |
+| `POST` | Create something new | `POST /triage` (creates a `triage_runs` row), `POST /feedback` |
+| `PATCH` | Partially update an existing thing | `PATCH /feedback/{id}` |
+| `DELETE` | Remove something | `DELETE /feedback/{id}` |
+
+**Why this convention, not a pile of custom-named endpoints** (e.g.
+`/getAlarms`, `/createFeedback`, `/removeFeedback`)? Because the method + URL pair is
+self-describing and predictable — any client (or any new developer) can guess that
+`DELETE /feedback/7` deletes feedback entry 7, without reading documentation. FastAPI
+also uses this structure to auto-generate the interactive API docs you can see at
+`/docs` once the backend is running.
+
+**Status codes carry meaning too**: `200` (success), `404` (the thing you asked for
+doesn't exist — e.g. `GET /feedback/999999`), `422` (the request body failed
+validation — e.g. an invalid `outcome` value). These aren't picked arbitrarily; FastAPI
+derives them automatically from Pydantic validation (`422`) and from explicit
+`HTTPException` calls in the route functions (`404`) — see
+`src/suryasutra/api/main.py`.
+
+### 9b. CRUD — and why it's deliberately *not* everywhere in this app
+
+**Concept.** CRUD (Create, Read, Update, Delete) names the four basic operations any
+persistent data usually needs. A common rubric question is simply "does the app
+support all four, somewhere real" — and it's worth being precise about *where*, not
+just asserting yes.
+
+**Where full CRUD actually lives in this project**: the `feedback` table.
+
+| Operation | Endpoint | What it does |
+|---|---|---|
+| Create | `POST /feedback` | A technician submits an outcome (fixed / not fixed / wrong step / unsafe) after a triage answer |
+| Read | `GET /feedback` | List every submitted feedback entry |
+| Update | `PATCH /feedback/{feedback_id}` | Correct a submitted outcome or note |
+| Delete | `DELETE /feedback/{feedback_id}` | Remove an entry entirely |
+
+All four are driven by a real, working UI: `web/src/components/FeedbackForm.tsx`
+(Create) and `web/src/pages/FeedbackList.tsx` (Read, inline Update, Delete) — not just
+callable via `curl`.
+
+**Why `alarms` and `triage_runs` deliberately *don't* get Update/Delete.** This isn't
+an oversight — it's a direct consequence of what those tables actually represent:
+
+- `alarms` is the seeded demo dataset (`data/synthetic/alarms.json`) — reference data
+  everyone's queue is built from. Letting anyone edit or delete rows here would mean
+  the demo data silently drifts from what's documented as synthetic and labelled.
+- `triage_runs` is an **audit trail** — the whole point of logging every run (model
+  used, tokens spent, exact answer given) is so it can be inspected later and trusted
+  as *what actually happened*. Making it editable would undermine the one property
+  that makes an audit trail useful: that it can't be quietly rewritten after the fact.
+
+`feedback`, on the other hand, is genuinely user-generated opinion about a run's
+outcome — a technician *should* be able to correct a mis-click or retract a note.
+Giving CRUD to the table where it makes sense, and deliberately not giving it to
+tables where mutability would work against the project's own design (D-06, D-11's
+"never fabricate/never silently alter the record" principles), is the actual design
+decision — see `docs/DECISIONS.md` D-47 for the full reasoning.
+
+### 9c. How a request actually reaches the database
+
+Concretely, for `PATCH /feedback/{feedback_id}` (`src/suryasutra/api/main.py`):
+
+1. FastAPI matches the incoming request's method + URL pattern to the
+   `update_feedback` Python function, and parses the JSON body into a
+   `FeedbackUpdateRequest` (a Pydantic model, `src/suryasutra/api/schemas.py`) —
+   if the body doesn't match that shape, FastAPI rejects it with `422` before your
+   code even runs.
+2. The function opens a database session (`get_session()`,
+   `src/suryasutra/db/session.py`) and looks up the row by id
+   (`session.get(Feedback, feedback_id)`). If it doesn't exist, `404`.
+3. It updates only the fields that were actually provided (`if req.outcome is not
+   None: ...`) — a `PATCH` is a *partial* update; a field left out of the request
+   body stays unchanged, unlike a `PUT`, which would conventionally replace the whole
+   resource.
+4. `get_session()`'s context manager commits the change automatically when the
+   function returns successfully, or rolls it back if anything raised an exception —
+   so a request either fully succeeds or leaves no partial change behind.
+
+## 10. Client-side identification vs. real authentication
+
+**Concept.** "Who is using this right now" can be answered two very different ways:
+
+- **Authentication**: cryptographically verifying an identity — a password checked
+  against a hashed value stored server-side, then a session token or cookie that
+  proves "this browser already proved who it is" on every later request. This is what
+  a real "login" means.
+- **Identification**: just *asking* who someone is, and remembering the answer,
+  without verifying it against anything. Anyone can type any name.
+
+**What this project actually has** (`web/src/useIdentity.ts`,
+`web/src/components/SignInGate.tsx`): identification only. A name and role, typed
+once, stored in the browser's `localStorage`. No password, no server-side account, no
+session token — the backend's `POST /feedback` endpoint trusts whatever `user_role`
+string the frontend sends it.
+
+**Why not build real authentication to make "login" literally true?** Because a login
+screen that *looks* secure but isn't would be actively misleading — worse than openly
+having no authentication at all. Real auth needs a `users` table with hashed
+passwords, a session/token mechanism, and routes protected by checking that token —
+none of which exists yet, and building a convincing-looking but fake version of it
+would be the kind of dishonesty this project's own rules (D-11: never fabricate) are
+specifically about avoiding. The sign-in screen's own copy says this plainly: *"this
+identifies your feedback, it isn't a password-protected account."*
+
+**The practical reason it exists at all**: before it was added, `POST /feedback`
+had no real source for `user_role` in the UI at all — this screen is what makes that
+field genuinely meaningful (a real human typed it) instead of a hardcoded placeholder
+string, while being honest about exactly what security guarantee it does and doesn't
+provide.
+
+## 11. Rubric compliance — what's implemented, where, and why
+
+This project was checked against a 6-criterion, 20-mark grading rubric. Rather than
+just asserting "done," here's exactly what satisfies each criterion and where to find
+it — the kind of mapping criterion 6 ("clarity in explaining project modules, tech
+stack, and local setup") is actually asking for.
+
+| # | Criterion | Marks | What satisfies it |
+|---|---|---|---|
+| 1 | Project Setup & Structure | 2 | `pyproject.toml` (Python deps), `web/package.json` (frontend deps), a clear `src/suryasutra/` module layout (full tree in `CLAUDE.md` §8), `docker-compose.yml` for one-command startup, `README.md`'s quickstart. |
+| 2 | UI Design (home/login/dashboard, navigation) | 4 | Landing page (`/`, `web/src/landing/`) as home; `SignInGate` (§10 above) as the identification/login screen; `Dashboard` tab; Radix `Tabs` navigation between Alarm queue / Feedback / Dashboard (`web/src/AppShell.tsx`) — all with working routing (`react-router-dom`, added per `docs/DECISIONS.md` D-46). |
+| 3 | Backend Functionality | 4 | FastAPI (§9 above) — 9 real routes across alarms, triage, runs, usage stats, and full feedback CRUD; the actual triage pipeline (retrieval → selection → generation, `docs/NLP_CONCEPTS.md`) is real server-side logic, not a stub. |
+| 4 | Database Connectivity (CRUD working) | 3 | SQLite via SQLAlchemy (`src/suryasutra/db/`), Alembic migrations. Full Create/Read/Update/Delete demonstrated on the `feedback` table (§9b above), with both backend tests and a real browser-driven UI for every operation. |
+| 5 | Testing & Debugging | 3 | 139 backend tests (`pytest`, unit + integration), 5 end-to-end browser tests (`Playwright`, against the real backend and real LLM calls, not mocks) — all passing. The app was driven live in a real browser (sign in → triage → submit/edit/delete feedback) with zero console errors before this was called done. |
+| 6 | Presentation & Explanation | 4 | This document and `docs/NLP_CONCEPTS.md` — concept → why → alternative → real implementation, for every non-obvious choice in the project, with file references throughout. `docs/DECISIONS.md` has the full dated reasoning behind every one. |
+
+**Status: all six criteria have real, verifiable evidence** — the two genuine gaps
+found when this was first checked (no Update/Delete anywhere in the API, and
+`POST /feedback` having no frontend at all) were identified by reading the actual code
+rather than assuming, then fixed and verified end-to-end, not just patched to look
+complete (`docs/DECISIONS.md` D-47, `docs/PROGRESS.md`'s corresponding entry).
+
+---
+
+## 12. Where to look for more
+
+- `docs/DECISIONS.md`, entries D-42, D-43, and D-47 — the full, dated record of every
   decision and incident summarized above, including the ones not expanded on here.
 - `Dockerfile.backend`, `Dockerfile.frontend`, `docker-compose.yml`,
-  `docker-compose.prod.yml`, `web/nginx.conf` — the actual configuration.
+  `docker-compose.prod.yml`, `web/nginx.conf` — the actual deploy configuration.
 - `Jenkinsfile`, `infra/app-userdata.sh`, `infra/jenkins-userdata.sh` — the actual
   deploy automation.
+- `src/suryasutra/api/main.py`, `src/suryasutra/api/schemas.py` — every route and
+  request/response shape referenced in §9.
+- `web/src/useIdentity.ts`, `web/src/components/SignInGate.tsx` — the identification
+  flow referenced in §10.

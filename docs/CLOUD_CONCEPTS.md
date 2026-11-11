@@ -3,11 +3,12 @@
 This is the companion to `docs/NLP_CONCEPTS.md`. That one explains what the app *does*
 (the retrieval/selection/generation pipeline); this one explains how it actually
 **runs** — locally, how it gets from your laptop to a public URL, what each
-infrastructure piece is for, and (§9 onward) the backend/API design concepts
-underneath the "Database Connectivity" and "Backend Functionality" parts of a typical
-project rubric. Same rule as CLAUDE.md's teaching mandate throughout: concept → why →
-alternative → what we actually built, grounded in real file paths and the real
-problems we hit (not hypothetical ones).
+infrastructure piece is for, and (§9 onward) the backend/API design concepts and full
+tech-stack breakdown underneath the "Database Connectivity," "Backend Functionality,"
+and "Presentation & Explanation" parts of a typical project rubric. Same rule as
+CLAUDE.md's teaching mandate throughout: concept → why → alternative → what we
+actually built, grounded in real file paths and the real problems we hit (not
+hypothetical ones).
 
 **Important scope note**: none of this infrastructure is part of the research/product
 work CLAUDE.md actually scopes for the prototype (§15/§16 only call for a local
@@ -522,12 +523,82 @@ field genuinely meaningful (a real human typed it) instead of a hardcoded placeh
 string, while being honest about exactly what security guarantee it does and doesn't
 provide.
 
-## 11. Rubric compliance — what's implemented, where, and why
+## 11. Presentation & Explanation — the full tech stack, module by module
+
+This is the detailed version of rubric criterion 6: not just "we used React," but
+*what it is, why it specifically (not the next-most-obvious alternative), and what
+module we actually built with it.* Everything below is a real, installed dependency —
+cross-check any of it against `pyproject.toml` or `web/package.json`. The AI/retrieval
+stack (BM25, dense embeddings, the LLM, FAISS) is deliberately not repeated here in
+depth — that's `docs/NLP_CONCEPTS.md`'s whole job; §11.5 below just places it in the
+bigger picture.
+
+### 11.1 Backend
+
+| Tech | What it is | Why this, not the alternative | What we built with it |
+|---|---|---|---|
+| **Python 3.11+** | General-purpose language | The entire ML/NLP ecosystem (embeddings, retrieval, LLM SDKs) is Python-first; a Node or Go backend would mean reimplementing or shelling out to Python anyway for the actual AI pipeline | All of `src/suryasutra/` |
+| **FastAPI** | Async Python web framework | Validates request/response shapes automatically from Python type hints (via Pydantic) and generates the interactive `/docs` page for free — a Flask equivalent needs a separate library (e.g. Flask-RESTX) bolted on for both | `src/suryasutra/api/main.py` — 9 routes (§9 above) |
+| **Pydantic v2** | Data validation library | FastAPI is built around it; a malformed request body is rejected with a `422` and a precise error *before* any of our code runs, instead of our code having to check `if "outcome" not in body: ...` by hand everywhere | `src/suryasutra/api/schemas.py`, `src/suryasutra/generation/schema.py` — every request/response shape in the project |
+| **SQLAlchemy 2.0** | Python ORM (Object-Relational Mapper) | Lets the same model classes (`src/suryasutra/db/models.py`) target SQLite now and Postgres later by changing one connection string (`DATABASE_URL`), instead of hand-writing SQL that's tied to one database's dialect | `Alarm`, `TriageRun`, `Usage`, `Feedback` tables |
+| **Alembic** | Database migration tool (pairs with SQLAlchemy) | Every schema change (e.g. adding the `feedback` table) is a versioned, re-runnable script instead of a manual `ALTER TABLE` someone has to remember to run on every machine | `src/suryasutra/db/alembic/versions/` — 2 migrations so far |
+| **SQLite** | Embedded, file-based database | Needs zero setup — no separate database server to install or configure for local development or grading. Swapped for Postgres only at pilot stage, when multiple concurrent users actually need it (see `docs/DECISIONS.md` D-35) | `data/processed/suryasutra.db` |
+
+### 11.2 Frontend
+
+| Tech | What it is | Why this, not the alternative | What we built with it |
+|---|---|---|---|
+| **React 18 + TypeScript** | UI library + typed JavaScript | Component model matches this app's structure well (alarm row → triage panel → citation chip, each independently re-usable); TypeScript catches a wrong prop type or a typo'd field name at build time instead of at runtime in the browser | Every file in `web/src/` |
+| **Vite** | Frontend build tool / dev server | Near-instant hot-reload during development (changes appear in the browser in milliseconds, not after a multi-second rebuild) — a big, felt difference from older bundlers (Webpack/CRA) when iterating on UI | `web/vite.config.ts`, `npm run dev` / `npm run build` |
+| **React Router** | Client-side routing | Without it, `/` and `/app` would have to be the same page faking two states — real URLs mean the landing page and the app are genuinely separate, bookmarkable, shareable locations | `/` → `LandingPage`, `/app` → `AppShell` (`web/src/App.tsx`) |
+| **Tailwind CSS v4** | Utility-first CSS framework | Colors/spacing/radii are defined once as CSS variables (`web/src/styles/tokens.css`) and consumed as plain class names (`bg-surface-1`, `text-danger`) everywhere — changing the whole theme means editing one file, not hunting through every component's custom CSS | The entire visual design system (dark "control room" + light "Field mode" themes) |
+| **TanStack Query** | Server-state/data-fetching library | Handles loading/error/cached states for every API call automatically (`useQuery`, `useMutation`) — without it, every component would hand-roll its own `isLoading`/`try-catch`/re-fetch-after-mutation logic | Every data fetch in the app (`getAlarms`, `runTriage`, `listFeedback`, etc.) |
+| **Radix UI** | Unstyled, accessible component primitives | `Tabs`, `Dialog` come with correct keyboard navigation, focus trapping, and ARIA roles already solved — building that correctly by hand is a well-known source of subtle accessibility bugs | Tab navigation (`AppShell.tsx`), the citation source panel (`SourcePanel.tsx`) |
+| **Motion** (successor to Framer Motion) | React animation library | Declarative — animations are described as data (`initial`/`animate`/`transition` props) instead of imperative DOM manipulation, and it respects `prefers-reduced-motion` with one hook (`useReducedMotion`) instead of hand-written media-query logic everywhere | Page transitions, the landing page's scroll-triggered reveals, the 3D-tilt glass cards |
+| **Lucide React** | Icon library | One consistent stroke style across the whole app (safety warnings, theme toggle, feedback edit/delete icons) instead of mixing emoji and ad-hoc SVGs | Icons throughout `web/src/components/` and `web/src/pages/` |
+| **Recharts** | Charting library | A thin, React-native wrapper over SVG charts — enough for the one bar chart the dashboard needs, without pulling in a much heavier general-purpose visualization library | `web/src/pages/Dashboard.tsx`'s cost-per-method chart |
+
+### 11.3 DevOps, deployment & version control
+
+Each of these has its own full section earlier in this document — this is the "why,
+briefly" index:
+
+- **Docker** (§2) — packages the exact Python/Node dependency versions so the app runs
+  identically on this machine, a grader's machine, or an AWS server, instead of
+  hoping everyone's local environment happens to match.
+- **AWS EC2** (§3) — the actual computer the public demo link runs on, chosen (as a
+  category) because it's the most widely-used cloud platform to have hands-on
+  experience with.
+- **Jenkins** (§4) — automates "a new commit is pushed → the live server rebuilds and
+  redeploys itself," so demoing a new version never means manually SSHing in and
+  running commands by hand.
+- **Git + GitHub** (§5) — every change in this project is a committed, attributable,
+  revertable snapshot; GitHub is where the single source of truth (`main` branch)
+  lives, and what Jenkins actually watches for changes.
+
+### 11.4 Testing
+
+| Tech | What it is | Why this, not the alternative | What we built with it |
+|---|---|---|---|
+| **pytest** | Python test runner | The de-facto standard for Python; plain `assert` statements instead of a verbose `self.assertEqual(...)` API | 139 tests across `tests/unit/` and `tests/integration/` |
+| **Hypothesis** | Property-based testing | Instead of writing one example input per test, it generates *hundreds* of random inputs looking for one that breaks an invariant — used specifically because the selector's core promise ("never exceeds the token budget," "never answers with uncovered mandatory evidence") needs to hold for *every* possible input, not just the one example we thought to write | Selector invariant tests (see `docs/NLP_CONCEPTS.md` §5 for what those invariants are) |
+| **Playwright** | Real-browser end-to-end testing | Unit tests mock the backend; Playwright actually launches a real Chromium browser, clicks real buttons, and hits the real FastAPI server (and, for some tests, makes a real Groq API call) — the only way to catch a bug that only exists in the real integration, like the sign-in-gate routing issue these tests were specifically updated to catch | `web/e2e/` — 5 tests: landing, triage, compare, dashboard, feedback CRUD |
+
+### 11.5 AI/ML (the part `docs/NLP_CONCEPTS.md` covers in full)
+
+Briefly, for completeness: **Groq** (LLM provider, chosen for low cost/speed),
+**sentence-transformers** + **FAISS** (dense/semantic retrieval), **rank-bm25**
+(lexical retrieval), **PyMuPDF** (PDF parsing). Full why/how for each is in
+`docs/NLP_CONCEPTS.md` §4 and §6 — that's where the project's actual research
+contribution lives, not in this infrastructure-focused document.
+
+---
+
+## 12. Rubric compliance — what's implemented, where, and why
 
 This project was checked against a 6-criterion, 20-mark grading rubric. Rather than
 just asserting "done," here's exactly what satisfies each criterion and where to find
-it — the kind of mapping criterion 6 ("clarity in explaining project modules, tech
-stack, and local setup") is actually asking for.
+it.
 
 | # | Criterion | Marks | What satisfies it |
 |---|---|---|---|
@@ -536,17 +607,19 @@ stack, and local setup") is actually asking for.
 | 3 | Backend Functionality | 4 | FastAPI (§9 above) — 9 real routes across alarms, triage, runs, usage stats, and full feedback CRUD; the actual triage pipeline (retrieval → selection → generation, `docs/NLP_CONCEPTS.md`) is real server-side logic, not a stub. |
 | 4 | Database Connectivity (CRUD working) | 3 | SQLite via SQLAlchemy (`src/suryasutra/db/`), Alembic migrations. Full Create/Read/Update/Delete demonstrated on the `feedback` table (§9b above), with both backend tests and a real browser-driven UI for every operation. |
 | 5 | Testing & Debugging | 3 | 139 backend tests (`pytest`, unit + integration), 5 end-to-end browser tests (`Playwright`, against the real backend and real LLM calls, not mocks) — all passing. The app was driven live in a real browser (sign in → triage → submit/edit/delete feedback) with zero console errors before this was called done. |
-| 6 | Presentation & Explanation | 4 | This document and `docs/NLP_CONCEPTS.md` — concept → why → alternative → real implementation, for every non-obvious choice in the project, with file references throughout. `docs/DECISIONS.md` has the full dated reasoning behind every one. |
+| 6 | Presentation & Explanation | 4 | §11 above (the full tech-stack why/what) plus `docs/NLP_CONCEPTS.md` — concept → why → alternative → real implementation, for every non-obvious choice in the project, with file references throughout. `docs/DECISIONS.md` has the full dated reasoning behind every one. |
 
 **Status: all six criteria have real, verifiable evidence** — the two genuine gaps
 found when this was first checked (no Update/Delete anywhere in the API, and
 `POST /feedback` having no frontend at all) were identified by reading the actual code
 rather than assuming, then fixed and verified end-to-end, not just patched to look
-complete (`docs/DECISIONS.md` D-47, `docs/PROGRESS.md`'s corresponding entry).
+complete (`docs/DECISIONS.md` D-47, `docs/PROGRESS.md`'s corresponding entry). Both
+the backend test suite and the frontend build were re-verified as recently as this
+same writing session — 139/139 passing, build clean.
 
 ---
 
-## 12. Where to look for more
+## 13. Where to look for more
 
 - `docs/DECISIONS.md`, entries D-42, D-43, and D-47 — the full, dated record of every
   decision and incident summarized above, including the ones not expanded on here.
@@ -558,3 +631,5 @@ complete (`docs/DECISIONS.md` D-47, `docs/PROGRESS.md`'s corresponding entry).
   request/response shape referenced in §9.
 - `web/src/useIdentity.ts`, `web/src/components/SignInGate.tsx` — the identification
   flow referenced in §10.
+- `pyproject.toml`, `web/package.json` — the exact, versioned dependency list behind
+  every "why we chose this" claim in §11.

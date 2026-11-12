@@ -75,6 +75,11 @@ jobs:
       # credentials, so it can be rotated/revoked independently.
       - name: Trigger Jenkins build
         run: |
-          curl -sf -X POST \
+          status=$(curl -s -o response.txt -w "%{http_code}" -X POST \
             -u "github-actions:${{ secrets.JENKINS_TRIGGER_TOKEN }}" \
-            "${{ secrets.JENKINS_URL }}/job/suryasutra-deploy/build"
+            "${{ secrets.JENKINS_URL }}/job/suryasutra-deploy/build")
+          echo "HTTP status: $status"
+          cat response.txt
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            exit 1
+          fi

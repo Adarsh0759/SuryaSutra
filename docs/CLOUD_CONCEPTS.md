@@ -233,16 +233,106 @@ having Jenkins' own script console read it from a temporary file *on its own dis
 (staged there via `scp`, then deleted right after) — so the key's contents never
 appeared in a chat transcript or a shell command's visible output.
 
-### 4e. What triggers a build: polling vs. webhooks
+### 4e. What triggers a build: polling, GitHub Actions, and a webhook — and how this evolved
 
-The standard, fast way for GitHub to tell Jenkins "a new commit landed" is a
-**webhook** — GitHub sends an HTTP request to Jenkins the moment you push. That requires
-Jenkins to be reachable *from GitHub's servers*, i.e. publicly accessible — which
-directly conflicts with locking Jenkins' UI down to one IP (§3e). The alternative,
-used here: **SCM polling** — Jenkins itself checks GitHub every 5 minutes
-(`H/5 * * * *`, the pipeline's trigger) and starts a build if anything changed. Slower
-(up to a 5-minute delay) but needs zero public inbound access to Jenkins — the right
-tradeoff for a small, security-conscious demo setup.
+The first version of this pipeline used **SCM polling only**: Jenkins itself checks
+GitHub every 5 minutes (`H/5 * * * *`, the pipeline's trigger) and starts a build if
+anything changed. Slower (up to a 5-minute delay) but needs zero public inbound access
+to Jenkins — the right tradeoff for a first pass.
+
+**This project later asked for a "complete" pipeline**, meaning: a CI gate (tests must
+pass before anything deploys) and near-instant triggering, not a 5-minute wait. Getting
+both meant a real, explicit tradeoff, confirmed before making it: real-time triggering
+needs *something* to reach Jenkins the moment a push happens, and Jenkins locked down to
+one IP (§3e) can't be reached by anything external. Three ways to resolve that were on
+the table:
+
+1. **A raw GitHub webhook straight to Jenkins** — GitHub's own servers POST to Jenkins
+   the instant you push. Fastest, but means teaching Jenkins' GitHub plugin to validate
+   GitHub's webhook payloads, and GitHub's webhook-sender IP ranges are numerous and
+   change, so "only allow GitHub's IPs" isn't a precise, stable firewall rule in practice.
+2. **GitHub Actions as the middleman** (what was actually built) — a free, hosted CI
+   runner (GitHub's own CI/CD product, see §4f) runs the tests *first*, and only on
+   success calls Jenkins' own remote-build-trigger URL. This gets the CI gate "for free"
+   as a side effect of needing a trigger at all, and the only network requirement is
+   "Jenkins is reachable on one port," not "Jenkins can validate GitHub's specific
+   request format."
+3. **Drop Jenkins from the live trigger path entirely** and have GitHub Actions deploy
+   directly — rejected; Jenkins was an explicit, separate ask (§4a) and removing it from
+   the real pipeline would make the earlier Jenkins setup pointless busywork.
+
+**Decision: option 2.** `suryasutra-jenkins-sg` now allows inbound 8080 from anywhere
+(`0.0.0.0/0`), not just one IP — a real, permanent increase in attack surface, accepted
+knowingly rather than discovered later. **The thing actually protecting Jenkins now is
+authentication, not network isolation** — see §4f for exactly how that's structured, and
+why the obvious-looking shortcut (the job's own simple `?token=` URL) didn't work.
+
+The old 5-minute SCM poll was **deliberately left running alongside** the new trigger,
+not removed — if the push-based trigger ever silently failed, the poll still catches the
+same commit within 5 minutes. Belt-and-suspenders, not either/or.
+
+### 4f. GitHub Actions, CI gates, and why a working build still needs the right account
+
+**GitHub Actions**, in one sentence: a CI/CD runner built into GitHub itself — you
+commit a YAML file (`.github/workflows/ci-cd.yml`) describing jobs to run, GitHub spins
+up a disposable virtual machine per job, runs them, and reports pass/fail right on your
+commit/PR. No separate server to provision (unlike Jenkins, which needed its own EC2
+instance, §4b) — the tradeoff is less control over the exact machine, which doesn't
+matter for "run `pytest`."
+
+**The three jobs, in `.github/workflows/ci-cd.yml`:**
+
+```yaml
+jobs:
+  backend:   # ruff (lint) -> mypy (type-check) -> pytest (139 tests)
+  frontend:  # oxlint (lint) -> vite build
+  trigger-deploy:
+    needs: [backend, frontend]              # <- the actual CI gate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - run: curl -X POST -u "github-actions:${{ secrets.JENKINS_TRIGGER_TOKEN }}" \
+             "${{ secrets.JENKINS_URL }}/job/suryasutra-deploy/build"
+```
+
+`needs: [backend, frontend]` is the entire CI gate — GitHub Actions won't even start a
+job until everything it `needs` has succeeded, so a failing test genuinely blocks the
+`curl` call that would otherwise tell Jenkins to deploy. **`secrets.*`** are GitHub's own
+encrypted secret store (Settings → Secrets and variables → Actions) — values set once in
+GitHub's UI, injected into the workflow at run time, never visible in the YAML file
+itself or in any log output.
+
+**Why calling Jenkins needed its own dedicated account, not just "add a token to the
+job."** Jenkins' remote-trigger feature normally works via a simple
+`/job/NAME/build?token=SECRET` URL with no login at all — the obvious thing to try
+first. It was tried first here, and it failed with a `403` ("Permission you need:
+`hudson.model.Hudson.Read`") — because this Jenkins has
+`denyAnonymousReadAccess=true`: an anonymous request is rejected before Jenkins even
+checks whether the token is valid. The fix was a real **service account**: a dedicated
+Jenkins user (`github-actions`), created headlessly (see below), authenticating via
+**HTTP Basic Auth with an API token** instead of a password. An **API token** is a
+long random string Jenkins can generate for an account, usable only for
+API/script access (not for logging into the web UI), and independently revocable without
+touching that account's real password — exactly the property you want for something a
+CI pipeline will store in a secret.
+
+**One honest nuance, not glossed over**: this Jenkins' authorization model
+(`FullControlOnceLoggedInAuthorizationStrategy` — "any logged-in account can do
+anything") means `github-actions` isn't actually *restricted* to "only trigger this one
+job" — it has full control, same as any human account here. The real benefit of a
+separate account under this model is independent **rotation and revocation** (this one
+token can be invalidated without affecting any human's login), not reduced privilege. A
+stricter setup (matrix-based authorization, scoped per-job permissions) would close that
+gap — noted as a real, open improvement, not pretended to already be solved.
+
+**How the account, its token, and (later) a forgotten human password were all handled
+without ever typing a secret into a chat or a visible command**: Jenkins supports
+`init.groovy.d` — a folder where any `.groovy` script dropped in runs automatically, once,
+the next time Jenkins starts, with full administrator privileges (no login required,
+since Jenkins itself is executing it as part of its own startup). A script here can
+create a user, generate an API token, or reset a password — write the result to a file
+*inside* the Jenkins container, which then gets copied out to a local file (`scp`
+file-to-file, never `cat` to a terminal) and deleted from the container — the exact same
+"generate once, never display" handling as the original SSH key (§3g).
 
 ---
 
@@ -258,11 +348,11 @@ reach the running app.
 
 ---
 
-## 6. Four real incidents, and what each one teaches
+## 6. Real incidents, and what each one teaches
 
 Abstract cloud concepts are easy to nod along to and hard to actually internalize.
-These four problems were hit, diagnosed, and fixed in this exact project — each one is
-a genuinely common, generalizable lesson.
+Every problem below was actually hit, diagnosed, and fixed in this exact project —
+each one is a genuinely common, generalizable lesson, not a hypothetical.
 
 ### 6a. The 10.5GB image (CPU vs. GPU dependencies)
 
@@ -343,24 +433,139 @@ other, prefer their private IPs/internal DNS, not their public ones — it's fas
 free, and (as this incident shows) sometimes the only thing that actually works with
 your security rules.
 
+### 6e. The deploy that "succeeded" but failed its own health check (burstable CPU credits)
+
+**What happened**: after both EC2 instances were restarted and the new GitHub
+Actions → Jenkins pipeline (§4e/4f) was wired up, the very first real deploy's
+**build and container startup both completed correctly** — Jenkins' own log showed
+images built, old containers recreated, new ones started — yet the pipeline's own
+**smoke test step failed** (`curl -sf .../api/health`, exit code 22), and the app
+genuinely returned a live `502 Bad Gateway` from nginx for several minutes afterward.
+
+**The diagnosis, done with real data, not a guess**: SSH'd into the app instance (via
+the Jenkins instance as a **jump host** — see §6f below) and ran `free -h` /
+`docker stats`: 485MB of the instance's 2GB swap was in active use on a plain
+**916MB-RAM `t3.micro`**, with the backend container's process accumulating almost no
+new CPU time between checks — not "frozen," just extremely slow. AWS's own CloudWatch
+metric `CPUCreditBalance` for that instance confirmed why: **~0.006 to 0.97 credits
+remaining**, when a healthy instance normally has dozens.
+
+**The concept**: `t3` instances are **burstable** — they get a baseline (a fraction of
+one vCPU) plus a slowly-replenishing pool of "CPU credits" that let them burst to full
+speed for short periods. Heavy, sustained work (here: Jenkins' `docker compose build`
+immediately followed by the backend's own CPU-heavy startup — loading an embedding
+model and encoding the whole manual into vectors, §6c) can burn through that credit
+pool faster than it refills. Once credits hit zero, AWS throttles the instance down to
+its tiny baseline rate — the instance isn't broken, it's deliberately slowed down by
+AWS's own billing model.
+
+**The fix, and the real tradeoff behind it**: resized the instance from `t3.micro` to
+`t3.small` (AWS CLI: stop the instance → `modify-instance-attribute --instance-type` →
+start it again; its private IP stayed the same, so nothing else needed updating).
+`t3.small` isn't AWS free-tier eligible — a real, ongoing hourly cost (roughly
+$0.02/hr per third-party trackers, not AWS's own price list) versus `t3.micro`'s free
+750 hours/month. This was a genuine cost-vs-reliability decision, not something to pick
+silently — confirmed explicitly before making it. After the resize: 0 swap in use,
+and a fresh deploy's smoke test passed cleanly.
+
+**The lesson**: a "stuck" cloud instance isn't always a code bug — on burstable
+instance types specifically, check the CPU credit balance (`CPUCreditBalance` in
+CloudWatch) before assuming the application hung. This is a very common trap with
+`t2`/`t3` free-tier instances under any real load (a Docker build *and* an ML model
+load, back to back, is exactly the kind of burst this instance class isn't sized for).
+
+### 6f. Reaching a locked-down instance without opening a new door (SSH jump host)
+
+**What happened**: debugging §6e meant needing an SSH shell on the app instance — but
+its security group only allows SSH from one specific IP (§3e), and that session's own
+outbound IP didn't match it. The tempting fix — add a new inbound rule for whatever IP
+happens to be asking — was tried once for a different, lower-stakes case, but widening
+SSH access on a second security group was correctly treated as a bigger, more
+deliberate decision and avoided here.
+
+**The actual fix**: the app instance's security group *already* allows SSH from
+anything carrying the Jenkins security group's identity (the SG-to-SG rule from §3e/§6d
+exists for exactly this). Since there was already SSH access to the *Jenkins* box, that
+box could be used as a **jump host** (also called a bastion host) — a stepping-stone
+server you SSH into first, which then forwards the connection on to a second,
+otherwise-unreachable machine:
+
+```bash
+ssh -i key.pem \
+    -o ProxyCommand="ssh -i key.pem -W %h:%p ec2-user@<jenkins-public-ip>" \
+    ec2-user@<app-private-ip>
+```
+
+`ProxyCommand` tells the local `ssh` client: "don't connect directly — first SSH to the
+jump host, then tunnel the raw TCP connection through it to the real destination." The
+private key never leaves the local machine; the jump host just relays encrypted bytes
+it can't read.
+
+**The lesson**: "I need access to debug this" doesn't always mean "open a new inbound
+rule." If a network path to the target already exists through something you can already
+reach, a jump host gets you there without touching the firewall at all — the more
+reversible, smaller-blast-radius option, and the standard pattern in real production
+environments for reaching instances that are deliberately never exposed to begin with.
+
+### 6g: CI passed locally, failed in GitHub Actions — an untracked dependency
+
+**What happened**: `mypy src` passed cleanly on the local development machine both
+before and immediately after writing the new GitHub Actions workflow — yet the very
+first real run of that workflow on GitHub's own servers failed at the exact same
+`mypy` step, with `Library stubs not installed for "yaml" [import-untyped]`.
+
+**The real cause**: a package called `types-PyYAML` (type *stubs* for the `PyYAML`
+library — metadata that tells `mypy` what shapes `yaml.safe_load()` etc. return,
+without which mypy can't type-check code that uses it) was installed in the local
+`.venv` at some earlier point, but was never added to `pyproject.toml`'s own list of
+declared dev dependencies. Locally, it was just silently *there*. GitHub Actions starts
+from a completely empty virtual machine every single run — it only installs exactly
+what `pyproject.toml` says to install, so the gap was invisible until a genuinely clean
+environment ran the same check.
+
+**The fix, verified rather than assumed**: added `"types-PyYAML>=6.0"` to
+`pyproject.toml`'s `dev` dependencies. Confirmed it was the real, sufficient fix by
+*reproducing the failure locally first* — uninstalled `types-PyYAML` from the local
+venv, confirmed `mypy` now failed the same way locally, reinstalled via
+`pip install -e ".[dev]"` (which reads `pyproject.toml`), and confirmed `mypy` passed
+again — proving the fix works from the declared dependency list alone, not from
+whatever happened to already be sitting in one developer's machine.
+
+**The lesson**: "it works on my machine" is a real, common failure mode precisely
+*because* a local environment accumulates packages over time that were never recorded
+anywhere. A CI system that builds from a clean environment on every run is valuable
+exactly because it catches this — every dependency a project actually needs must be
+written down somewhere a machine reads (`pyproject.toml`, `package.json`), not just
+present on whichever computer happened to get there first.
+
 ---
 
 ## 7. The whole picture, in one diagram
 
 ```
  You (git push) ──► GitHub (main branch)
-                         ▲
-                         │ polls every 5 min
                          │
-          ┌──────────────┴───────────────┐
-          │   suryasutra-jenkins (EC2)    │
+                         ▼
+          ┌───────────────────────────────┐
+          │   GitHub Actions (§4f)         │
+          │   backend: ruff/mypy/pytest    │
+          │   frontend: oxlint/vite build  │
+          └───────────────┬───────────────┘
+                   needs: both succeed
+                           │ POST .../build
+                           │ (Basic Auth: github-actions + API token)
+                           ▼
+          ┌───────────────────────────────┐◄── (fallback: still polls
+          │   suryasutra-jenkins (EC2)    │     GitHub every 5 min too)
           │   Jenkins, in a container      │
-          │   port 8080 — you only         │
+          │   port 8080 — now public,      │
+          │   token-protected (§4e/4f)     │
           └──────────────┬───────────────┘
                          │ SSH (private IP, SG-to-SG rule)
                          ▼
           ┌──────────────────────────────┐
           │   suryasutra-app (EC2)        │
+          │   t3.small (§6e)               │
           │   git pull → docker compose    │
           │   build → up --build           │
           │  ┌──────────┐  ┌────────────┐ │
@@ -397,8 +602,23 @@ your security rules.
   doing it by hand.
 - **Pipeline / Jenkinsfile**: a CI/CD process, defined as versioned code rather than
   manual UI configuration.
-- **Webhook vs. polling**: push-based (instant, needs public inbound access) vs.
-  pull-based (a short delay, needs no inbound access) ways to detect new commits.
+- **Webhook vs. polling vs. a CI-triggered call**: push-based (instant, needs public
+  inbound access), pull-based (a short delay, needs no inbound access), or a hosted CI
+  runner calling the deploy tool itself only after tests pass (§4e/4f) — what this
+  project actually settled on.
+- **CI gate**: a later step (e.g. "deploy") made conditional on an earlier step (e.g.
+  "tests") succeeding — GitHub Actions' `needs:` keyword implements this directly.
+- **Service account**: a dedicated login for a tool or pipeline to use, kept separate
+  from any human's own account so it can be rotated or revoked independently.
+- **API token**: a long random credential an account can generate for
+  script/API access, usable in place of (and independently revocable from) that
+  account's actual password.
+- **Burstable instance (`t2`/`t3`)**: an instance type with a low guaranteed baseline
+  CPU rate plus a pool of "credits" that let it run faster temporarily — sustained heavy
+  work can exhaust the pool and throttle the instance hard (§6e).
+- **Jump host / bastion host**: a reachable server used purely to relay an SSH
+  connection on to a second, otherwise-unreachable server, without opening new direct
+  access to that second server (§6f).
 
 ---
 
@@ -606,7 +826,7 @@ it.
 | 2 | UI Design (home/login/dashboard, navigation) | 4 | Landing page (`/`, `web/src/landing/`) as home; `SignInGate` (§10 above) as the identification/login screen; `Dashboard` tab; Radix `Tabs` navigation between Alarm queue / Feedback / Dashboard (`web/src/AppShell.tsx`) — all with working routing (`react-router-dom`, added per `docs/DECISIONS.md` D-46). |
 | 3 | Backend Functionality | 4 | FastAPI (§9 above) — 9 real routes across alarms, triage, runs, usage stats, and full feedback CRUD; the actual triage pipeline (retrieval → selection → generation, `docs/NLP_CONCEPTS.md`) is real server-side logic, not a stub. |
 | 4 | Database Connectivity (CRUD working) | 3 | SQLite via SQLAlchemy (`src/suryasutra/db/`), Alembic migrations. Full Create/Read/Update/Delete demonstrated on the `feedback` table (§9b above), with both backend tests and a real browser-driven UI for every operation. |
-| 5 | Testing & Debugging | 3 | 139 backend tests (`pytest`, unit + integration), 5 end-to-end browser tests (`Playwright`, against the real backend and real LLM calls, not mocks) — all passing. The app was driven live in a real browser (sign in → triage → submit/edit/delete feedback) with zero console errors before this was called done. |
+| 5 | Testing & Debugging | 3 | 139 backend tests (`pytest`, unit + integration), 5 end-to-end browser tests (`Playwright`, against the real backend and real LLM calls, not mocks) — all passing. The app was driven live in a real browser (sign in → triage → submit/edit/delete feedback) with zero console errors before this was called done. Those same checks now also run automatically on every push via GitHub Actions (§4f) — debugging real CI-vs-local mismatches (§6g) and a real instance-sizing failure (§6e) is documented, not hidden. |
 | 6 | Presentation & Explanation | 4 | §11 above (the full tech-stack why/what) plus `docs/NLP_CONCEPTS.md` — concept → why → alternative → real implementation, for every non-obvious choice in the project, with file references throughout. `docs/DECISIONS.md` has the full dated reasoning behind every one. |
 
 **Status: all six criteria have real, verifiable evidence** — the two genuine gaps
@@ -621,12 +841,16 @@ same writing session — 139/139 passing, build clean.
 
 ## 13. Where to look for more
 
-- `docs/DECISIONS.md`, entries D-42, D-43, and D-47 — the full, dated record of every
-  decision and incident summarized above, including the ones not expanded on here.
+- `docs/DECISIONS.md`, entries D-42, D-43, D-47, and **D-48** — the full, dated record
+  of every decision and incident summarized above, including the ones not expanded on
+  here. D-48 specifically covers the GitHub Actions + Jenkins push-trigger work and the
+  `t3.small` resize in §4e-4f and §6e-6g.
 - `Dockerfile.backend`, `Dockerfile.frontend`, `docker-compose.yml`,
   `docker-compose.prod.yml`, `web/nginx.conf` — the actual deploy configuration.
 - `Jenkinsfile`, `infra/app-userdata.sh`, `infra/jenkins-userdata.sh` — the actual
   deploy automation.
+- `.github/workflows/ci-cd.yml` — the GitHub Actions CI gate and Jenkins trigger
+  referenced in §4f.
 - `src/suryasutra/api/main.py`, `src/suryasutra/api/schemas.py` — every route and
   request/response shape referenced in §9.
 - `web/src/useIdentity.ts`, `web/src/components/SignInGate.tsx` — the identification

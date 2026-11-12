@@ -434,5 +434,38 @@ Founder asked for a "complete" CI/CD pipeline — D-43 already had CD (Jenkins d
 - Jenkins' authorization model (`FullControlOnceLoggedInAuthorizationStrategy`) gives every logged-in account full control — the new `github-actions` account buys independent credential rotation, not reduced privilege. A real least-privilege (matrix-based) setup would be stronger.
 - Both EC2 instances are left **running** after this work (not stopped, since the founder is actively using the live pipeline) — real hourly cost accruing on both until stopped.
 
-### Next smallest step
+### Next smallest step (superseded — see below)
 Founder adds `JENKINS_URL` (`http://<current Jenkins public IP>:8080`) and `JENKINS_TRIGGER_TOKEN` (from the local token file) as GitHub Actions repo secrets, then pushes a real commit to confirm the whole chain fires without any manual trigger.
+
+## CI/CD pipeline fully verified end-to-end: done
+
+Founder added both secrets. First real attempt still failed (`401`), but with the real
+HTTP status/body now actually visible (an earlier fix, made for exactly this moment) —
+root cause was a trailing newline in the locally-saved token file getting copied into
+GitHub's secret along with the token, corrupting the Basic Auth value. Produced a clean
+copy for the founder to re-copy from (never displaying the token to do it), and the
+re-run succeeded.
+
+### What works, confirmed on both sides independently
+- GitHub Actions run: `backend` ✅, `frontend` ✅, `trigger-deploy` ✅.
+- Jenkins' own build history (checked directly, not assumed from GitHub's side alone):
+  build #15, `"result":"SUCCESS"`, genuinely started by this trigger.
+- The full, real chain now works with zero manual steps: `git push` → GitHub Actions
+  runs real tests → only on success, calls Jenkins → Jenkins deploys → smoke test
+  confirms health.
+- The deploy smoke test (`Jenkinsfile`) now retries for up to 2 minutes instead of a
+  single `curl`, after a real observed failure (build #10) where the deploy itself was
+  fine but the health check raced the backend's own startup time.
+- The GitHub Actions trigger step now prints the real HTTP status and response body on
+  failure instead of a bare exit code — this is what made the 401 diagnosable at all,
+  and is kept permanently for the next time a secret gets rotated or mistyped.
+
+### Known issues / open items
+- No Elastic IP on the Jenkins box — its public IP (and therefore `JENKINS_URL`)
+  changes on every stop/start and needs manual updating in GitHub's secret after that.
+- Both EC2 instances are left running (real ongoing cost, app box now on paid
+  `t3.small`) since the pipeline is actively in use.
+
+### Next smallest step
+Founder's call — stop both instances when done testing (real cost accruing), or
+continue using the live pipeline as-is.

@@ -48,7 +48,22 @@ pipeline {
 
         stage('Smoke test') {
             steps {
-                sh "curl -sf --max-time 10 http://${APP_HOST}/api/health"
+                // The backend container does real work on startup (loads the embedding
+                // model, builds the search index, runs migrations) before it can answer
+                // /api/health — a plain one-shot curl right after `up -d` can race that
+                // and fail a perfectly good deploy (seen for real: build #10). Retry for
+                // up to 2 minutes instead of giving up on the first attempt.
+                sh """
+                    for i in \$(seq 1 24); do
+                        if curl -sf --max-time 10 http://${APP_HOST}/api/health; then
+                            exit 0
+                        fi
+                        echo "Health check attempt \$i failed, retrying in 5s..."
+                        sleep 5
+                    done
+                    echo "Backend never became healthy after 2 minutes."
+                    exit 1
+                """
             }
         }
     }

@@ -1,0 +1,80 @@
+name: CI/CD
+
+# CI runs on every push/PR so broken code is caught early. The deploy job only
+# runs on a push to main, and only after both CI jobs succeed (see `needs:` below)
+# — this is the hard gate: a failing test or a broken frontend build never reaches
+# the app server. See docs/CLOUD_CONCEPTS.md §4 for how the deploy stage itself
+# (Jenkins -> SSH -> docker compose on the app EC2 instance) works.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # CPU-only torch first, same as Dockerfile.backend — sentence-transformers
+      # otherwise pulls the ~2GB GPU build, which is both slow and pointless on a
+      # CI runner with no GPU.
+      - name: Install dependencies
+        run: |
+          pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --no-cache-dir -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check src tests
+
+      - name: Type-check (mypy)
+        run: mypy src
+
+      - name: Tests (pytest)
+        run: pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (oxlint)
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  trigger-deploy:
+    needs: [backend, frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      # Jenkins still runs the actual deploy (checkout -> SSH to the app EC2
+      # instance -> docker compose up -d --build -> smoke test, per the
+      # Jenkinsfile) — this job only tells Jenkins "go now" instead of waiting
+      # for its next 5-minute SCM poll. Auth is a dedicated Jenkins account
+      # (`github-actions`) with its own API token, not the admin's own
+      # credentials, so it can be rotated/revoked independently.
+      - name: Trigger Jenkins build
+        run: |
+          curl -sf -X POST \
+            -u "github-actions:${{ secrets.JENKINS_TRIGGER_TOKEN }}" \
+            "${{ secrets.JENKINS_URL }}/job/suryasutra-deploy/build"

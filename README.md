@@ -170,6 +170,8 @@ site's own procedures.
 
 run verification
 
+run app
+
 ## Reproducing the eval tables above
 
 ```bash

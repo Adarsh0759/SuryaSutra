@@ -7,7 +7,7 @@ import { SafetyGuarantee } from './SafetyGuarantee'
 
 export function LandingPage() {
   return (
-    <div className="min-h-svh bg-bg">
+    <div className="min-h-svh bg-[#0f2a4d]">
       <Hero />
       <ProblemCards />
       <HowItWorks />

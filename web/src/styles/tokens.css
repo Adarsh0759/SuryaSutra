@@ -6,7 +6,7 @@
   /* Brand (theme-invariant) */
   --midnight: #030407;
   --cobalt: #1558c9;
-  --lime: #ff6b35;
+  --lime: #d4ff24;
 
   /* Dark theme (default) */
   --bg: #030407;
@@ -16,7 +16,7 @@
   --text-1: #f2f4f8;
   --text-2: #a7b0c0;
   --text-3: #6b7486;
-  --accent: #ff6b35;
+  --accent: #d4ff24;
   --accent-text: #030407;
   --interactive: #4c8dff;
   --danger: #ff5a5f;
@@ -33,7 +33,7 @@
   --text-1: #030407;
   --text-2: #3e4554;
   --text-3: #5b6272;
-  --accent: #ff6b35;
+  --accent: #d4ff24;
   --accent-text: #030407;
   --interactive: #1558c9;
   --danger: #c62828;

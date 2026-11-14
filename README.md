@@ -167,6 +167,9 @@ substitute for site safety procedures, lockout/tagout, or a qualified electrical
 person's judgment. Do not act on a safety step from this system without following your
 site's own procedures.
 
+
+run verification
+
 ## Reproducing the eval tables above
 
 ```bash
